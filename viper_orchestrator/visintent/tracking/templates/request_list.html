@@ -1,0 +1,36 @@
+{% load static %}
+{% include "layouts/head.html" %}
+<body>
+{% include "layouts/nav.html" %}
+<div>
+    {% if error %}
+    {{ error }}
+    {% endif %}
+    <div style="display:flex">
+    {# TODO, maybe: dynamically generate with js instead of templates #}
+    <div>
+        <h2>pending</h2>
+        <table id="request-table-pending" style="margin-right:2vw">
+            {% include "layouts/request_table_header.html" %}
+            {% for record in records %}
+                {% if not record.capture_id %}
+                    {% include "layouts/request_table_row.html" %}
+                {% endif %}
+            {% endfor %}
+        </table>
+    </div>
+    <div>
+        <h2>fulfilled</h2>
+        <table id="request-table-fulfilled">
+            {% include "layouts/request_table_header.html" %}
+            {% for record in records %}
+                {% if record.capture_id %}
+                    {% include "layouts/request_table_row.html" %}
+                {% endif %}
+            {% endfor %}
+        </table>
+    </div>
+    </div>
+</div>
+</body>
+</html>

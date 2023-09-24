@@ -1,0 +1,27 @@
+        <tr>
+            <td><a href={{ record.view_url }}>{{ record.title }}</a></td>
+            <td>{{ record.request_time }}</td>
+            <td>
+                <form method="GET" action="/assigncaptures">
+                <label for="capture-input-{{ record.request_id }}">
+                    <input id="capture-input-{{ record.request_id }}"
+                           type="text"
+                           name="capture-id"
+                           {% if record.capture_id is not None %}
+                           value="{{ record.capture_id }}" {% else %} value=""
+                           {% endif %}
+                           style="max-width:3rem;"
+                    >
+                </label>
+                <label for="hidden-id-input-{{ record.request_id }}">
+                    <input id="hidden-id-input-{{ record.request_id }}"
+                           type="text"
+                           name="request-id"
+                           value="{{ record.request_id }}"
+                           style="display:none"
+                    >
+                </label>
+                {# TODO, maybe: red button that says 'invalidate' with a confirmation dialog? #}
+                <button type="submit">change</button>
+                </form>
+        </tr>

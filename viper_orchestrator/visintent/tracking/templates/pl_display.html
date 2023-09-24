@@ -1,0 +1,59 @@
+{% load static %}
+{% include "layouts/head.html" %}
+<body>
+{% include "layouts/nav.html" %}
+    <div id="grid-layout" style="display:flex">
+    <div id="left-panel" style="display: flex; flex-direction:column; flex-grow:1;">
+    <div id="front-matter">
+        <h2>active protected list entries</h2>
+        <p class="placeholder-text">placeholder: a way to display superseded/fulfilled entries</p>
+        <p class="placeholder-text">placeholder: this picture of a squirrel represents a diagram of the cameras/CCUs</p>
+        <img src="{% static 'images/squirrel.jpg' %}" alt="a squirrel" style="max-width: 270px;max-height:270px">
+    </div>
+    <div id="main-ccu-split" class="pl-table-container">
+        {# TODO, maybe: dynamically generate with js instead of templates #}
+        <div style="margin-right: 3vw">
+            <h4 style="margin-bottom:0">CCU 0</h4>
+            <h5 style="margin-top:0">write position: {{ last_ids.zero }}</h5>
+            <table id="ccu-table-0">
+                {% include "layouts/pl_table_header.html" %}
+                {% for record in records %}
+                    {% if record.ccu == 0 %}
+                        {% include "layouts/pl_table_row.html" %}
+                    {% endif %}
+                {% endfor %}
+            </table>
+        </div>
+        <div>
+            <h4 style="margin-bottom:0">CCU 1</h4>
+            <h5 style="margin-top:0">write position: {{ last_ids.one }}</h5>
+            <table id="ccu-table-1">
+                {% include "layouts/pl_table_header.html" %}
+                {% for record in records %}
+                    {% if record.ccu == 1 %}
+                        {% include "layouts/pl_table_row.html" %}
+                    {% endif %}
+                {% endfor %}
+            </table>
+        </div>
+    </div>
+    </div>
+    <div id="right-panel" style="display:flex;flex-direction:column;flex-grow:0.1;flex-shrink:1;justify-content: flex-end">
+        <div id="pl-feed" class="feed-panel">
+            <h3 style="color: white;margin-top:0">feed</h3>
+            {% for item in feed %}
+                <p style="color:
+                    {% if item.what == 'superseded' %}#BB2222;
+                    {% elif item.what == 'fulfilled' %}#00CC11;
+                    {% else %}#5FC5C6;
+                    {% endif %}
+                    font-size:11.5pt">
+                    [{{ item.what }} @ {{ item.when }}]<br>{{ item.entry.image_id }}
+                    on CCU {{ item.entry.ccu }} taken @ {{ item.entry.start_time }}
+                </p>
+            {% endfor %}
+    </div>
+    </div>
+    </div>
+</body>
+</html>

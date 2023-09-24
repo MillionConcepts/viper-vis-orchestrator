@@ -1,0 +1,41 @@
+name: viperdev
+channels:
+  - conda-forge
+dependencies:
+# hostess dependencies
+  - python>=3.9
+  - boto3
+  - cytoolz
+  - dill
+  - dustgoggles
+  - more-itertools
+  - pandas
+  - pyyaml
+  - protobuf
+  - psutil
+  - pympler
+  - python-magic
+  - requests
+  - rich
+  - fabric
+  - invoke
+# dependencies for parquet
+  - pyarrow
+# thumbnails
+  - pillow
+# dependencies for the visintent application
+  - django
+# dependencies for components of vipersci used by the orchestrator
+  - genshi
+  - psycopg2
+  - scikit-image
+  - sqlalchemy
+  - tifftools
+# dependencies for yamcs & dev stuff
+  - beautifulsoup4
+  - jupyter
+  - pip
+# yamcs-client wants to install a lower version that is incompatible with
+# hostess, so don't add it to the environment file!
+  - pip:
+      - google

@@ -1,0 +1,54 @@
+{% load static %}
+{% include "layouts/head.html" %}
+<body>
+{% include "layouts/nav.html" %}
+<div id="form-content">
+<form method="GET" action="/submitplrequest"
+    style="max-width: 50vw"
+>
+    {% if form.pl_id is not None %}
+        <h2>editing protected list request</h2>
+        {% if form.has_lossless %}
+            <p><b>Note: this request has been fulfilled.</b></p>
+        {% elif form.superseded %}
+            <p><b>WARNING: this image no longer exists in the CCU slot, though
+                the request was not fulfilled successfully. This is a
+                view-only form.
+            </b></p>
+        {% endif %}
+    {% else %}
+        <h2>new protected list request</h2>
+    {% endif %}
+    associated product ids: {{ form.matching_pids }}
+    <p class="placeholder-text">placeholder: a way to mark me as rejected / delete me</p>
+    <div style="margin-top: 1rem; display: flex; flex-direction: column;">
+    {{form}}
+    {# TODO: ugly #}
+        <label for="hidden-superseded-input">
+        <input type="text"
+               style="display: none;" id="hidden-superseded-input"
+               name="superseded" value={{ form.superseded }}>
+        <label for="hidden-pl-id-input">
+        <input type="text"
+               style="display: none;" id="hidden-pl-id-input"
+               name="pl_id" value={{ form.pl_id }}>
+        </label>
+        <label for="hidden-product-id-input">
+            <input type="text" style="display: none;" id="hidden-product-id-input" name="product_id" value={{ form.product_id }}>
+        </label>
+        </label>
+            <label for="hidden-matching-pids-input">
+        <input type="text"
+               style="display: none;" id="hidden-matching-pids-input"
+               name="matching_pids" value={{ form.matching_pids }}>
+        </label>
+
+    {% if not form.superseded %}
+        <div style="margin-top: 1rem;"><button type="submit" name="submit" value="submit">submit</button></div>
+    {% endif %}
+    </div>
+
+</form>
+</div>
+</body>
+</html>

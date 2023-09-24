@@ -1,0 +1,132 @@
+:root {
+    --light-tint-0: rgba(255, 250, 255, 0.1);
+    --light-tint-1: rgba(255, 250, 255, 0.18);
+    --dark-tint-0: rgba(5, 0, 5, 0.1);
+    --silver: #dee1e3;
+    --celeste: #5fc5c6;
+    --royal-violet: #6d3dba;
+    --slate: #466B6C;
+    --night-black: #111111;
+    --astronomical-twilight: #161819;
+    --phosphor-green: #00CC11;
+    --old-led: #BB2222;
+}
+
+
+@font-face {
+  font-family: 'Titillium Web';
+  font-style: normal;
+  font-weight: 500;
+  src: url(../fonts/TitilliumWeb-SemiBold.ttf);
+}
+
+@font-face {
+  font-family: 'Titillium Web';
+  font-style: normal;
+  font-weight: 400;
+  src: url(../fonts/TitilliumWeb-Regular.ttf);
+}
+
+@font-face {
+  font-family: 'Titillium Web';
+  font-style: normal;
+  font-weight: 300;
+  src: url(../fonts/TitilliumWeb-Light.ttf);
+}
+
+@font-face {
+    font-family: "Fira Mono";
+    font-style: normal;
+    src: url(../fonts/FiraMono-Regular.ttf) format("truetype");
+    font-weight: 400;
+}
+
+body {
+    font-size: 13pt;
+    background: var(--night-black);
+    font-family: 'Titillium Web', sans-serif;
+    color: var(--silver);
+    line-height: 1.2;
+    padding: 1rem;
+    margin: auto;
+    font-weight: 400
+}
+
+.placeholder-text {
+    color: var(--old-led);
+    font-size: 11pt;
+    margin: 0;
+}
+
+.pl-table-item {
+    padding-right: 1rem;
+    max-width: 20rem;
+}
+
+.pl-table-container {
+    display: flex;
+    /*max-width: 60vw;*/
+    /*flex*/
+}
+
+.feed-panel {
+    background-color: var(--astronomical-twilight);
+    padding: 0.5rem;
+
+}
+
+@media (max-width: 90rem) {
+    .pl-table-container {
+        flex-direction: column;
+    }
+}
+
+h1, h2, h3, h4 {
+    font-family: 'Titillium Web', sans-serif;
+}
+h1, h2, h3, h4, p {
+    margin-bottom: 1rem;
+    padding: 0;
+}
+
+h1 {
+    font-size: 42pt;
+    font-weight: 500;
+}
+
+h2 {
+    font-size: 32pt;
+    margin: 0.25rem 0 0.25rem;
+    font-weight: 500;
+}
+
+h3 {
+    font-size: 24pt;
+    font-weight: 400;
+}
+
+h4 {
+    font-size: 19pt;
+    font-weight: 400
+}
+
+a {
+    color: var(--celeste);
+    margin: 0;
+    padding: 0;
+    text-decoration: none;
+    vertical-align: baseline;
+}
+a:hover {
+    text-decoration: underline;
+}
+a:visited {
+    color: var(--royal-violet);
+}
+
+
+aside {
+    display: block;
+    float: right;
+    width: 390px;
+}

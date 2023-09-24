@@ -1,0 +1,14 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link type="text/css" rel="stylesheet" href={% static "css/main.css" %}/>
+    <link rel="shortcut icon" type="image/png" href="{% static 'images/favicon.ico' %}"/>
+    {% if pagetitle is None %}
+    <title>VIS Web Interface</title>
+    {% else %}
+    <title>{{ pagetitle }}</title>
+    {% endif %}
+
+</head>

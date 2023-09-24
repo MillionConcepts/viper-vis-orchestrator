@@ -1,0 +1,14 @@
+{% load static %}
+{% include "layouts/head.html" %}
+<body>
+{% include "layouts/nav.html" %}
+<div>
+<form action="/plrequest">
+    <label for="product-id-input">
+    <input type="text" name="product-id" id="product-id-input" placeholder="VIS product ID of image to protect" style="min-width: 20rem">
+    </label>
+    <button type="submit" name="pl-create-submit">submit</button>
+</form>
+</div>
+</body>
+</html>
