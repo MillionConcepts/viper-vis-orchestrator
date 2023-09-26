@@ -21,7 +21,7 @@ from typing import (
     Mapping,
 )
 
-from db.config import BROWSE_ROOT, DATA_ROOT
+from viper_orchestrator.db.config import BROWSE_ROOT
 from hostess.station.actors import reported
 from hostess.station.bases import (
     Actor,

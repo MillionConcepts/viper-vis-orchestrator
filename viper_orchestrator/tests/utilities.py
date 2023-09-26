@@ -19,8 +19,10 @@ from vipersci.vis.db.image_records import ImageRecord
 from viper_orchestrator.station.definition import IMAGE_DATA_PARAMETERS
 from viper_orchestrator.db import OSession
 from viper_orchestrator.yamcsutils.mock import MockServer
-from visintent.tracking.forms import PLSubmission
-from visintent.tracking.db_utils import _create_or_update_entry
+from viper_orchestrator.visintent.tracking.forms import PLSubmission
+from viper_orchestrator.visintent.tracking.db_utils import (
+    _create_or_update_entry
+)
 
 # where do our mock events live?
 MOCK_ROOT = Path("../mock_data/mock_events_b6s3_all_cameras_icer")

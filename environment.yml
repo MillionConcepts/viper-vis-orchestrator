@@ -10,6 +10,8 @@ dependencies:
   - dustgoggles
   - more-itertools
   - pandas
+  - postgis
+  - postgres
   - pyyaml
   - protobuf
   - psutil

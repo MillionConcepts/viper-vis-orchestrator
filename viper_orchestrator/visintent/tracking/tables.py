@@ -24,192 +24,192 @@ class AppBase(DeclarativeBase):
 
     pass
 
-
-class ImageRequest(AppBase):
-    """table for image requests / intents."""
-
-    __tablename__ = "image_requests"
-    request_id = mapped_column(Integer, Identity(start=1), primary_key=True)
-    title = mapped_column(
-        String, nullable=False, doc="short title for request"
-    )
-    justification = mapped_column(
-        String, nullable=False, doc="full description of request intent"
-    )
-    capture_id = mapped_column(String, unique=True)
-    # TODO: determine whether to dynamically or statically update
-    status = mapped_column(
-        String, nullable=False, default="submitted", doc="request status"
-    )
-    # note that this cannot be an enum because it may be a set. it is stored
-    # as a comma-separated string and must be validated separately.
-    ldst = mapped_column(String, nullable=False, doc="LDST matrix elements")
-    users = mapped_column(String, nullable=False, doc="requesting user(s)")
-    # note: autofilled; this will also track edit time / backfill time.
-    request_time = mapped_column(
-        DateTime, nullable=False, doc="time of request submission/update"
-    )
-    # all remaining fields may be null for backfilled requests. they are
-    # intended for use in ops.
-    target_location = mapped_column(
-        String,
-        doc="One-line description of what this should be an image "
-        "of. May simply be coordinates from MMGIS.",
-    )
-    rover_location = mapped_column(
-        String,
-        doc="One-line description of where the rover should be when "
-        "the image is taken. May simply be coordinates from MMGIS.",
-    )
-    rover_orientation = mapped_column(
-        String,
-        default="any",
-        doc="One-line description of desired rover orientation",
-    )
-    # TODO: how do we handle attached images? are we responsible for file
-    #  management?
-
-    imaging_mode = mapped_column(
-        String, doc="cameras / imaging mode to be used"
-    )
-
-    compression = mapped_column(String, doc="desired compression for image")
-    luminaires = mapped_column(
-        String, default="default", doc="requested active luminaires"
-    )
-    caltarget_required = mapped_column(
-        Boolean, default=True, doc="acquire caltarget image?"
-    )
-    aftcam_pair = mapped_column(
-        Boolean, default=False, doc="acquire additional aftcam pair?"
-    )
-    chin_down_navcam_pair = mapped_column(
-        Boolean, default=False, doc="acquire chin-down navcam pair?"
-    )
-    # panorama-only parameters
-    need_360 = mapped_column(Boolean, default=False)
-    # needed only for non-360 panos
-    first_slice_index = mapped_column(Integer)
-    last_slice_index = mapped_column(Integer)
-    exposure_time = mapped_column(String, default="default")
-
-    # legal values for things.
-    # could do some of these as enum columns but very annoying for things that
-    # start with numbers, generally more complicated, etc.
-    luminaire_generalities = ("default", "none")
-    luminaire_tuple_elements = (
-        "navlight_left",
-        "navlight_right",
-        "hazlight_front_left",
-        "hazlight_front_right",
-        "hazlight_left_side",
-        "hazlight_right_side",
-        "hazlight_back_left",
-        "hazlight_back_right",
-    )
-    exposures = ("default", "overexposed", "neutral", "underexposed")
-    compressions = ("Lossless", "Lossy")
-    # TODO: do we want a non-pano image request to be able to handle a series?
-    imaging_modes = (
-        # empty string for post-hoc intents. TODO: consider autopopulating
-        '',
-        "navcam_left",
-        "navcam_right",
-        "navcam_stereo_pair",
-        "navcam_panoramic_sequence",
-        "aftcam_left",
-        "aftcam_right",
-        "aftcam_stereo_pair",
-        "hazcam_any",
-        "hazcam_forward_port",
-        "hazcam_forward_starboard",
-        "hazcam_aft_port",
-        "hazcam_aft_starboard",
-    )
-    # current status of request.
-    # note that this has nothing whatsoever to do with the Protected List.
-    # it tracks only image acquisition.
-    request_statuses = ("submitted", "rejected", "commanded", "fulfilled")
-
-    @validates("compression")
-    def validate_compression(self, _, value: str):
-        if value.capitalize() not in self.compressions:
-            raise ValueError(f"compression must be in {self.compressions}")
-        return value.capitalize()
-
-    @validates("imaging_mode")
-    def validate_imaging_mode(self, _, value: str):
-        if value not in self.imaging_modes:
-            raise ValueError(f"imaging mode must be in {self.imaging_modes}")
-        return value
-
-    @validates("luminaires")
-    def validate_luminaires(self, _, value: Sequence[str] | str):
-        if isinstance(value, str):
-            value = value.split(",")
-        if len(value) == 0:
-            raise ValueError(
-                "at least 'default' must be specified for luminaires"
-            )
-        if len(value) == 1:
-            legal = self.luminaire_tuple_elements + self.luminaire_generalities
-            if value[0] not in legal:
-                raise ValueError(f"single luminaire entry must be in {legal}")
-        if len(value) == 2:
-            if not all(v in self.luminaire_tuple_elements for v in value):
-                raise ValueError(
-                    f"2-element requests must be selected from:"
-                    f"{self.luminaire_tuple_elements}"
-                )
-        if len(value) > 2:
-            raise ValueError("max 2 luminaires per request")
-        return ",".join(value)
-
-    @validates("request_status")
-    def validate_request_status(self, _, value: str):
-        if value not in self.request_statuses:
-            raise ValueError(
-                f"request status must be in {self.request_statuses}"
-            )
-        return value
-
-    @validates("capture_id")
-    def validate_capture_id(self, _, value: str | None):
-        if value is None:
-            return
-        if (isinstance(value, str)) and (value.lower() == "none"):
-            return
-        try:
-            ids = set(map(int, str(value).replace(" ", "").split(",")))
-        except (ValueError, AttributeError, TypeError):
-            raise ValueError(
-                "capture id must be a base-10 integer or a comma-separated "
-                "list of base-10 integers"
-            )
-        for request_id, cs in self.capturesets().items():
-            if request_id == self.request_id:
-                continue
-            if not ids.isdisjoint(cs):
-                raise ValueError(
-                    f"Capture ID(s) {ids.intersection(cs)} have already "
-                    f"been associated with another image request."
-                )
-        return ",".join(map(str, ids))
-
-    # this is a little inefficient but I don't really want to make a
-    # table for captures to permit a formal one-to-many relationship
-    @classmethod
-    def capturesets(cls):
-        capturemap = {}
-        with OSession() as session:
-            requests = session.execute(select(cls.capture_id, cls.request_id))
-            for capture_id, pk in requests:
-                if capture_id is None:
-                    continue
-                capturemap[pk] = set(
-                    map(int, capture_id.replace(" ", "").split(","))
-                )
-        return capturemap
+#
+# class ImageRequest(AppBase):
+#     """table for image requests / intents."""
+#
+#     __tablename__ = "image_requests"
+#     request_id = mapped_column(Integer, Identity(start=1), primary_key=True)
+#     title = mapped_column(
+#         String, nullable=False, doc="short title for request"
+#     )
+#     justification = mapped_column(
+#         String, nullable=False, doc="full description of request intent"
+#     )
+#     capture_id = mapped_column(String, unique=True)
+#     # TODO: determine whether to dynamically or statically update
+#     status = mapped_column(
+#         String, nullable=False, default="submitted", doc="request status"
+#     )
+#     # note that this cannot be an enum because it may be a set. it is stored
+#     # as a comma-separated string and must be validated separately.
+#     ldst = mapped_column(String, nullable=False, doc="LDST matrix elements")
+#     users = mapped_column(String, nullable=False, doc="requesting user(s)")
+#     # note: autofilled; this will also track edit time / backfill time.
+#     request_time = mapped_column(
+#         DateTime, nullable=False, doc="time of request submission/update"
+#     )
+#     # all remaining fields may be null for backfilled requests. they are
+#     # intended for use in ops.
+#     target_location = mapped_column(
+#         String,
+#         doc="One-line description of what this should be an image "
+#         "of. May simply be coordinates from MMGIS.",
+#     )
+#     rover_location = mapped_column(
+#         String,
+#         doc="One-line description of where the rover should be when "
+#         "the image is taken. May simply be coordinates from MMGIS.",
+#     )
+#     rover_orientation = mapped_column(
+#         String,
+#         default="any",
+#         doc="One-line description of desired rover orientation",
+#     )
+#     # TODO: how do we handle attached images? are we responsible for file
+#     #  management?
+#
+#     imaging_mode = mapped_column(
+#         String, doc="cameras / imaging mode to be used"
+#     )
+#
+#     compression = mapped_column(String, doc="desired compression for image")
+#     luminaires = mapped_column(
+#         String, default="default", doc="requested active luminaires"
+#     )
+#     caltarget_required = mapped_column(
+#         Boolean, default=True, doc="acquire caltarget image?"
+#     )
+#     aftcam_pair = mapped_column(
+#         Boolean, default=False, doc="acquire additional aftcam pair?"
+#     )
+#     chin_down_navcam_pair = mapped_column(
+#         Boolean, default=False, doc="acquire chin-down navcam pair?"
+#     )
+#     # panorama-only parameters
+#     need_360 = mapped_column(Boolean, default=False)
+#     # needed only for non-360 panos
+#     first_slice_index = mapped_column(Integer)
+#     last_slice_index = mapped_column(Integer)
+#     exposure_time = mapped_column(String, default="default")
+#
+#     # legal values for things.
+#     # could do some of these as enum columns but very annoying for things that
+#     # start with numbers, generally more complicated, etc.
+#     luminaire_generalities = ("default", "none")
+#     luminaire_tuple_elements = (
+#         "navlight_left",
+#         "navlight_right",
+#         "hazlight_front_left",
+#         "hazlight_front_right",
+#         "hazlight_left_side",
+#         "hazlight_right_side",
+#         "hazlight_back_left",
+#         "hazlight_back_right",
+#     )
+#     exposures = ("default", "overexposed", "neutral", "underexposed")
+#     compressions = ("Lossless", "Lossy")
+#     # TODO: do we want a non-pano image request to be able to handle a series?
+#     imaging_modes = (
+#         # empty string for post-hoc intents. TODO: consider autopopulating
+#         '',
+#         "navcam_left",
+#         "navcam_right",
+#         "navcam_stereo_pair",
+#         "navcam_panoramic_sequence",
+#         "aftcam_left",
+#         "aftcam_right",
+#         "aftcam_stereo_pair",
+#         "hazcam_any",
+#         "hazcam_forward_port",
+#         "hazcam_forward_starboard",
+#         "hazcam_aft_port",
+#         "hazcam_aft_starboard",
+#     )
+#     # current status of request.
+#     # note that this has nothing whatsoever to do with the Protected List.
+#     # it tracks only image acquisition.
+#     request_statuses = ("submitted", "rejected", "commanded", "fulfilled")
+#
+#     @validates("compression")
+#     def validate_compression(self, _, value: str):
+#         if value.capitalize() not in self.compressions:
+#             raise ValueError(f"compression must be in {self.compressions}")
+#         return value.capitalize()
+#
+#     @validates("imaging_mode")
+#     def validate_imaging_mode(self, _, value: str):
+#         if value not in self.imaging_modes:
+#             raise ValueError(f"imaging mode must be in {self.imaging_modes}")
+#         return value
+#
+#     @validates("luminaires")
+#     def validate_luminaires(self, _, value: Sequence[str] | str):
+#         if isinstance(value, str):
+#             value = value.split(",")
+#         if len(value) == 0:
+#             raise ValueError(
+#                 "at least 'default' must be specified for luminaires"
+#             )
+#         if len(value) == 1:
+#             legal = self.luminaire_tuple_elements + self.luminaire_generalities
+#             if value[0] not in legal:
+#                 raise ValueError(f"single luminaire entry must be in {legal}")
+#         if len(value) == 2:
+#             if not all(v in self.luminaire_tuple_elements for v in value):
+#                 raise ValueError(
+#                     f"2-element requests must be selected from:"
+#                     f"{self.luminaire_tuple_elements}"
+#                 )
+#         if len(value) > 2:
+#             raise ValueError("max 2 luminaires per request")
+#         return ",".join(value)
+#
+#     @validates("request_status")
+#     def validate_request_status(self, _, value: str):
+#         if value not in self.request_statuses:
+#             raise ValueError(
+#                 f"request status must be in {self.request_statuses}"
+#             )
+#         return value
+#
+#     @validates("capture_id")
+#     def validate_capture_id(self, _, value: str | None):
+#         if value is None:
+#             return
+#         if (isinstance(value, str)) and (value.lower() == "none"):
+#             return
+#         try:
+#             ids = set(map(int, str(value).replace(" ", "").split(",")))
+#         except (ValueError, AttributeError, TypeError):
+#             raise ValueError(
+#                 "capture id must be a base-10 integer or a comma-separated "
+#                 "list of base-10 integers"
+#             )
+#         for request_id, cs in self.capturesets().items():
+#             if request_id == self.request_id:
+#                 continue
+#             if not ids.isdisjoint(cs):
+#                 raise ValueError(
+#                     f"Capture ID(s) {ids.intersection(cs)} have already "
+#                     f"been associated with another image request."
+#                 )
+#         return ",".join(map(str, ids))
+#
+#     # this is a little inefficient but I don't really want to make a
+#     # table for captures to permit a formal one-to-many relationship
+#     @classmethod
+#     def capturesets(cls):
+#         capturemap = {}
+#         with OSession() as session:
+#             requests = session.execute(select(cls.capture_id, cls.request_id))
+#             for capture_id, pk in requests:
+#                 if capture_id is None:
+#                     continue
+#                 capturemap[pk] = set(
+#                     map(int, capture_id.replace(" ", "").split(","))
+#                 )
+#         return capturemap
 
 
 CCU_HASH = {

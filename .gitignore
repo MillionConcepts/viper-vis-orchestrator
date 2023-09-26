@@ -168,3 +168,6 @@ viper_orchestrator/media/
 
 # application logs
 logs/
+/viper_orchestrator/db/postgres/
+/viper_orchestrator/db/logfile
+/viper_orchestrator/mock_data/

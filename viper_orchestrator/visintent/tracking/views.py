@@ -19,13 +19,13 @@ from viper_orchestrator.visintent.tracking.forms import (
 )
 from viper_orchestrator.visintent.tracking.tables import (
     CCU_HASH,
-    ImageRequest,
     ProtectedListEntry,
 )
 from viper_orchestrator.visintent.tracking.db_utils import (
     _create_or_update_entry
 )
 from vipersci.vis.db.image_records import ImageRecord
+from vipersci.vis.db.image_requests import ImageRequest
 
 
 @never_cache

@@ -9,7 +9,6 @@ from sqlalchemy import select
 
 from viper_orchestrator.db import OSession
 from viper_orchestrator.visintent.tracking.tables import (
-    ImageRequest,
     capture_ids_to_product_ids,
     ProtectedListEntry,
 )
@@ -17,6 +16,7 @@ from viper_orchestrator.visintent.visintent.settings import (
     MEDIA_ROOT,
     MEDIA_URL,
 )
+from vipersci.vis.db.image_requests import ImageRequest
 
 
 class BadURLError(ValueError):

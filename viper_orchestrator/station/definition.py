@@ -1,7 +1,7 @@
 from pathlib import Path
 import random
 
-from db.config import DATA_ROOT
+from viper_orchestrator.db.config import DATA_ROOT
 from hostess.station.actors import InstructionFromInfo
 from hostess.station.station import Station
 

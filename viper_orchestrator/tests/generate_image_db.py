@@ -2,7 +2,6 @@
 simple integration test for raw product creation based on parameters
 published by a mock yamcs server.
 """
-from pathlib import Path
 import shutil
 import time
 
@@ -16,7 +15,7 @@ from viper_orchestrator.tests.utilities import make_mock_server
 from vipersci.vis.db.image_records import ImageRecord
 
 # clean up, start fresh
-TEST_DB_PATH.unlink(missing_ok=True)
+# TEST_DB_PATH.unlink(missing_ok=True)
 for root in (DATA_ROOT, BROWSE_ROOT):
     shutil.rmtree(root, ignore_errors=True)
     root.mkdir()

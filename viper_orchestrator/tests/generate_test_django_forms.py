@@ -13,12 +13,15 @@ from viper_orchestrator.tests.utilities import (
     FakeWSGIRequest,
     randomize_form,
     image_records_by_compression,
-    make_mock_server, make_random_pl_submission,
+    make_mock_server,
+    make_random_pl_submission,
 )
 from vipersci.vis.db.image_records import ImageRecord
+from vipersci.vis.db.image_requests import ImageRequest
+from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
 
-# note that django setup _must_ occur before importing any django application
-# modules
+# note that django setup _must_ occur before importing any modules that
+# rely on the django API
 os.environ.setdefault(
     "DJANGO_SETTINGS_MODULE", "viper_orchestrator.visintent.visintent.settings"
 )
@@ -28,14 +31,13 @@ from viper_orchestrator.visintent.tracking.forms import (
     PLSubmission,
     AlreadyLosslessError,
 )
-from viper_orchestrator.visintent.tracking.tables import (
-    ImageRequest,
-    ProtectedListEntry,
-)
 from viper_orchestrator.visintent.tracking.views import (
-    assigncaptures, intsplit,
+    assigncaptures,
+    intsplit,
 )
-from visintent.tracking.db_utils import _create_or_update_entry
+from viper_orchestrator.visintent.tracking.db_utils import (
+    _create_or_update_entry,
+)
 
 # clean up
 with OSession() as session:
@@ -61,10 +63,10 @@ with OSession() as session:
 # currently-correct kwargs for making create_image.create think a product
 # is lossless
 LOSSLESS_KWARGS = {
-    'onboard_compression_ratio': 1,
-    'output_image_mask': 1,
-    'output_image_type': "LOSSLESS_ICER_IMAGE",
-    'eng_value_imageHeader_processingInfo': 8
+    "onboard_compression_ratio": 1,
+    "output_image_mask": 1,
+    "output_image_type": "LOSSLESS_ICER_IMAGE",
+    "eng_value_imageHeader_processingInfo": 8,
 }
 
 # randomly cluster 9 or 10 capture ids to assign to requests, simulating
@@ -92,9 +94,10 @@ for cluster, request in zip(clusters, requests):
     response = assigncaptures.__wrapped__(fakewsgi)
     # make sure that the attempt failed if the capture id was already described
     if response.content.decode("utf-8").startswith("Capture ID(s)"):
-        assert len(
-            set(p.capture_id for p in cluster).intersection(used_captures)
-        ) != 0
+        assert (
+            len(set(p.capture_id for p in cluster).intersection(used_captures))
+            != 0
+        )
         continue
     # otherwise make sure the assignment succeeded
     with OSession() as session:
@@ -103,9 +106,8 @@ for cluster, request in zip(clusters, requests):
         )
         request = session.scalars(selector).one()
         total_requests += 1
-        assert (
-            intsplit(request.capture_id)
-            == intsplit(fakewsgi.GET["capture-id"])
+        assert intsplit(request.capture_id) == intsplit(
+            fakewsgi.GET["capture-id"]
         )
     used_captures |= set(p.capture_id for p in cluster)
     total_capture_ids += len(cluster)
@@ -120,7 +122,7 @@ with OSession() as session:
 products_by_compression["lossless"] = []
 
 # pick some random products for protected list testing
-lossies = random.choices(products_by_compression['lossy'], k=6)
+lossies = random.choices(products_by_compression["lossy"], k=6)
 
 # make sure we can put a lossy product on the protected list
 lossy0 = lossies[0]
@@ -172,7 +174,7 @@ try:
         **LOSSLESS_KWARGS,
         instrument_name=lossy4.instrument_name,
         image_id=lossy4.image_id,
-        lobt=lossy4.start_time.timestamp() + 3600
+        lobt=lossy4.start_time.timestamp() + 3600,
     )
     time.sleep(2)  # wait a beat
     assert ProtectedListEntry.from_pid(lossy4.product_id).superseded is True
@@ -181,4 +183,4 @@ try:
 finally:
     station.shutdown()
     server.ctx.kill()
-    print('shut down station and mock YAMCS server')
+    print("shut down station and mock YAMCS server")
