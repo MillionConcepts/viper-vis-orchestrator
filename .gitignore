@@ -165,6 +165,7 @@ viper-yamcs*/
 *.raw
 viper_orchestrator/media/
 *.sqlite3
+*.npy
 
 # application logs
 logs/
