@@ -13,6 +13,7 @@ from viper_orchestrator.visintent.tracking.forms import (
     RequestForm,
     PLSubmission,
     BadURLError, AlreadyLosslessError, AlreadyDeletedError,
+    image_request_capturesets,
 )
 from viper_orchestrator.visintent.tracking.forms import (
     request_supplementary_path,
@@ -216,7 +217,7 @@ def imagelist(request):
         rows = session.scalars(select(ImageRecord)).all()
     # noinspection PyUnresolvedReferences
     rows.sort(key=lambda r: r.start_time, reverse=True)
-    records, capturesets = [], ImageRequest.capturesets()
+    records, capturesets = [], image_request_capturesets()
     # noinspection PyTypeChecker
     for row in rows:
         record = {

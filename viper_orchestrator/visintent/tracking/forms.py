@@ -6,7 +6,6 @@ from cytoolz import keyfilter
 from django import forms
 from django.core.exceptions import ValidationError
 from sqlalchemy import select
-from sqlalchemy.orm import DeclarativeBase
 
 from viper_orchestrator.db import OSession
 from viper_orchestrator.visintent.tracking.tables import (
@@ -26,13 +25,13 @@ class BadURLError(ValueError):
 
 
 def image_request_capturesets():
+    capture_sets = {}
     with OSession() as session:
         requests = session.scalars(select(ImageRequest)).all()
-    capture_sets = {}
-    for request in requests:
-        capture_sets[request.id] = set(
-            map(lambda i: i.capture_id, request.image_records)
-        )
+        for request in requests:
+            capture_sets[request.id] = set(
+                map(lambda i: i.capture_id, request.image_records)
+            )
     return capture_sets
 
 
@@ -45,7 +44,7 @@ class RequestForm(forms.Form):
         capture_id=None,
         image_request=None,
         request_id=None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.capture_id, self.image_request = capture_id, image_request
@@ -99,9 +98,7 @@ class RequestForm(forms.Form):
     def from_request_id(cls, id):
         with OSession() as session:
             # noinspection PyTypeChecker
-            selector = select(ImageRequest).where(
-                ImageRequest.id == id
-            )
+            selector = select(ImageRequest).where(ImageRequest.id == id)
             request = session.scalars(selector).one()
             return cls(capture_id=request.capture_id, image_request=request)
 
@@ -231,7 +228,7 @@ class RequestForm(forms.Form):
         choices=[
             ("default", "default"),
             ("none", "none"),
-            *((k, v) for k, v in luminaire_names.items())
+            *((k, v) for k, v in luminaire_names.items()),
         ],
     )
     # Note that django checkboxinput widgets must have required=False to allow
@@ -308,22 +305,22 @@ class RequestForm(forms.Form):
         table
         """
         # note that only aftcams/navcams have image_mode
-        request = self.cleaned_data['camera_request']
+        request = self.cleaned_data["camera_request"]
         self.camera_type = request.split("_")[0].upper()
-        if request == 'hazcam_any':
-            self.generalities = ('Any',)
+        if request == "hazcam_any":
+            self.generalities = ("Any",)
             self.hazcams = ()
-        elif 'hazcam' in request:
-            self.hazcams = self.cleaned_data['camera_request']
-        elif request == 'navcam_panoramic_sequence':
-            self.image_mode = 'PANORAMA'
+        elif "hazcam" in request:
+            self.hazcams = self.cleaned_data["camera_request"]
+        elif request == "navcam_panoramic_sequence":
+            self.image_mode = "PANORAMA"
         # note that AftCams and NavCams use left/right, not port/starboard
-        elif 'left' in request:
-            self.image_mode = 'LEFT'
-        elif 'right' in request:
-            self.image_mode = 'RIGHT'
-        elif 'stereo' in request:
-            self.image_mode = 'STEREO'
+        elif "left" in request:
+            self.image_mode = "LEFT"
+        elif "right" in request:
+            self.image_mode = "RIGHT"
+        elif "stereo" in request:
+            self.image_mode = "STEREO"
 
     # this is actually an optional set of integers, but, in form submission, we
     # retain / parse it as a string for UI reasons. TODO, maybe: clean that up.
