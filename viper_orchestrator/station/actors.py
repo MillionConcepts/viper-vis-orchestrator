@@ -1,5 +1,10 @@
 import datetime as dt
+import re
+
+import dateutil.parser
+import dateutil.tz
 import numpy as np
+import pytz
 from PIL import Image
 from cytoolz import itemfilter
 from dustgoggles.structures import listify
@@ -46,6 +51,9 @@ from vipersci.vis import create_image
 from yamcs.tmtc.model import ParameterValue
 from viper_orchestrator.db import OSession
 from viper_orchestrator.yamcsutils.mock import MockYamcsClient, MockContext
+
+# noinspection PyTypeChecker
+IMAGERECORD_COLUMNS = frozenset(c.name for c in ImageRecord.__table__.columns)
 
 
 def thumbnail_16bit_tif(
@@ -284,7 +292,7 @@ class InsertIntoDatabase(Actor):
             with OSession() as session:
                 for e in event:
                     # TODO: log db inserts and insert failures
-                    session.add(e)
+                     session.add(e)
                 session.commit()
         # TODO: what exception types am i looking for
         except Exception as ex:
@@ -358,11 +366,25 @@ def unpack_image_parameter_data(parameter: ParameterValue | Mapping):
         | get("eng_value")["imageHeader"]
         | temp_hardcoded_header_values()
     )
-    with BytesIO(get("eng_value")["imageData"]) as f:
-        im = imread(f)
     if isinstance(parameter, dict):
         # allows us to explicitly manipulate RawProduct constructors
         d |= itemfilter(
             lambda kv: kv[0] not in ("eng_value", "raw_value"), parameter
         )
+    for k, v in d.items():
+        if not isinstance(v, str):
+            continue
+        if re.match(r"20\d\d-\d\d-", v):
+            d[k] = dateutil.parser.parse(
+                v, ignoretz=True
+            ).replace(tzinfo=dt.timezone.utc)
+            # d[k] = str(
+            #     dateutil.parser.parse(v).replace(tzinfo=dateutil.tz.UTC)
+            # )
+    # load image
+    with BytesIO(get("eng_value")["imageData"]) as f:
+        im = imread(f)
+    # filter parameters that can cause undefined behavior in ImageRecord
+    for badkey in ('generation_time', 'reception_time'):
+        d.pop(badkey, None)
     return d, im

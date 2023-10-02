@@ -15,10 +15,10 @@ from viper_orchestrator.tests.utilities import make_mock_server
 from vipersci.vis.db.image_records import ImageRecord
 
 # clean up, start fresh
-# TEST_DB_PATH.unlink(missing_ok=True)
-for root in (DATA_ROOT, BROWSE_ROOT):
-    shutil.rmtree(root, ignore_errors=True)
-    root.mkdir()
+shutil.rmtree(TEST_DB_PATH, ignore_errors=True)
+for folder in (DATA_ROOT, BROWSE_ROOT):
+    shutil.rmtree(folder, ignore_errors=True)
+    folder.mkdir()
 station = vsd.create_station()
 vsd.launch_delegates(station)
 station.save_port_to_shared_memory()
@@ -30,7 +30,7 @@ print("initializing mock YAMCS server")
 server = make_mock_server(station.get_delegate("watcher")["obj"])
 try:
     # send some mock events
-    max_products, total_products = 45, 0
+    max_products, total_products = 5, 0
     print("spooling mock YAMCS publications...", end="\n")
     for i in range(max_products):
         try:

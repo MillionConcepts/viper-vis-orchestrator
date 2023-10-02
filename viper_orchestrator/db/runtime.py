@@ -5,6 +5,7 @@ initialization and connection workflow. This module's ENGINE member is
 intended for use as a database connection.
 """
 import atexit
+import re
 import shutil
 import time
 from functools import partial
@@ -25,7 +26,7 @@ DO_NOT_KILL = []
 
 def listkiller(processes: list[Viewer]):
     if len(processes) > 0:
-        print('killing managed processes...')
+        print('killing managed processes on exit...')
     while len(processes) > 0:
         viewer = processes.pop()
         print(f"killing PID {viewer.pid} ({viewer.command})...", end="")
@@ -85,6 +86,11 @@ if TEST is True:
                 if pginit.returncode() != 0:
                     kill_and_delete(pginit)
                     raise construct_postgres_error(pginit)
+            # edit conf file to ensure timezone is set to UTC
+            text = (TEST_DB_PATH / "postgresql.conf").open().read()
+            text = re.sub("\ntimezone.*?\n", "\ntimezone = 'UTC'\n", text)
+            with (TEST_DB_PATH / "postgresql.conf").open('w') as stream:
+                stream.write(text)
     # otherwise, simply connect to the test database
     else:
         pginit = Viewer.from_command(f"postgres -D {TEST_DB_PATH}")
