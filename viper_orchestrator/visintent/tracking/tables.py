@@ -2,10 +2,8 @@
 like a conventional django models module, but using the SQLAlchemy ORM rather 
 than the django ORM for compatibility with vipersci.
 """
-from typing import Sequence, Collection
 
 from sqlalchemy import (
-    Boolean,
     DateTime,
     Identity,
     Integer,
@@ -16,7 +14,8 @@ from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from sqlalchemy.orm import DeclarativeBase, mapped_column, validates
 
 from viper_orchestrator.db import OSession
-from vipersci.vis.db.image_records import ImageRecord, ImageType
+from viper_orchestrator.db.table_utils import has_lossless
+from vipersci.vis.db.image_records import ImageRecord
 
 
 class AppBase(DeclarativeBase):
@@ -233,26 +232,3 @@ class ProtectedListEntry(AppBase):
     _matching_products = None
 
 
-def has_lossless(products):
-    return any(
-        ImageType(p.output_image_mask).name.startswith("LOSSLESS")
-        for p in products
-    )
-
-
-def capture_ids_to_product_ids(
-    cids: int | str | Collection[int | str]
-) -> set[str]:
-    if isinstance(cids, str):
-        cids = map(int, cids.split(","))
-    elif isinstance(cids, int):
-        cids = {cids}
-    else:
-        cids = map(int, cids)
-    pids = []
-    with OSession() as session:
-        for cid in cids:
-            # noinspection PyTypeChecker
-            selector = select(ImageRecord).where(ImageRecord.capture_id == cid)
-            pids += [p.product_id for p in session.scalars(selector).all()]
-    return set(pids)

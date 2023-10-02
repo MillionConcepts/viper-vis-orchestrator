@@ -8,8 +8,9 @@ from django.core.exceptions import ValidationError
 from sqlalchemy import select
 
 from viper_orchestrator.db import OSession
+from viper_orchestrator.db.table_utils import image_request_capturesets, \
+    get_capture_ids, capture_ids_to_product_ids
 from viper_orchestrator.visintent.tracking.tables import (
-    capture_ids_to_product_ids,
     ProtectedListEntry,
 )
 from viper_orchestrator.visintent.visintent.settings import (
@@ -22,17 +23,6 @@ from vipersci.vis.db.light_records import luminaire_names
 
 class BadURLError(ValueError):
     pass
-
-
-def image_request_capturesets():
-    capture_sets = {}
-    with OSession() as session:
-        requests = session.scalars(select(ImageRequest)).all()
-        for request in requests:
-            capture_sets[request.id] = set(
-                map(lambda i: i.capture_id, request.image_records)
-            )
-    return capture_sets
 
 
 class RequestForm(forms.Form):
@@ -49,8 +39,11 @@ class RequestForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.capture_id, self.image_request = capture_id, image_request
         if self.capture_id is not None:
-            self.capture_id = self.capture_id.replace(" ", "").strip(",")
             self.product_ids = capture_ids_to_product_ids(self.capture_id)
+            # want to keep this a string for compatibility with the UI
+            if isinstance(self.capture_id, set):
+                self.capture_id = ",".join(str(ci) for ci in self.capture_id)
+            self.capture_id = self.capture_id.replace(" ", "").strip(",")
             # make fields not required for already-taken images non-mandatory
             # and prohibit editing request information
             for field_name, field in self.fields.items():
@@ -60,14 +53,14 @@ class RequestForm(forms.Form):
             for field_name, field in self.fields.items():
                 if field_name in dir(image_request):
                     field.initial = getattr(image_request, field_name)
-            self.request_id = image_request.request_id
+            self.id = image_request.id
             if request_id is not None:
                 warnings.warn(
                     "request_id and image_request simultaneously passed to "
                     "RequestForm constructor; undesired behavior may result"
                 )
         elif request_id is not None:
-            self.request_id = int(request_id)
+            self.id = int(request_id)
         self.pano_only_fields = [
             field_name
             for field_name, field in self.fields.items()
@@ -83,14 +76,14 @@ class RequestForm(forms.Form):
         # TODO, maybe: is this pathing a little sketchy?
         try:
             filepath = next(
-                request_supplementary_path(self.request_id).parent.iterdir(),
+                request_supplementary_path(self.id).parent.iterdir(),
             )
         except (StopIteration, FileNotFoundError, AttributeError):
             return None, None
         # noinspection PyUnboundLocalVariable
         file_url = (
             f"{MEDIA_URL}request_supplementary_data/"
-            f"request_{self.request_id}/{filepath.name}"
+            f"request_{self.id}/{filepath.name}"
         )
         return filepath.name, file_url
 
@@ -100,7 +93,9 @@ class RequestForm(forms.Form):
             # noinspection PyTypeChecker
             selector = select(ImageRequest).where(ImageRequest.id == id)
             request = session.scalars(selector).one()
-            return cls(capture_id=request.capture_id, image_request=request)
+            return cls(
+                capture_id=get_capture_ids(request), image_request=request
+            )
 
     @classmethod
     def from_capture_id(cls, capture_id):

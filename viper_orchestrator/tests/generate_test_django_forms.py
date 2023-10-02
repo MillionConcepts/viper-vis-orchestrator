@@ -5,6 +5,7 @@ import time
 import django
 from sqlalchemy import select
 
+import viper_orchestrator.db.table_utils
 from viper_orchestrator.db import OSession
 from viper_orchestrator.db.runtime import ENGINE
 from viper_orchestrator.station import definition as vsd
@@ -32,9 +33,9 @@ from viper_orchestrator.visintent.tracking.forms import (
     AlreadyLosslessError,
 )
 from viper_orchestrator.visintent.tracking.views import (
-    assign_records_from_capture_id,
-    intsplit,
+    assign_records_from_capture_ids,
 )
+from viper_orchestrator.db.table_utils import intsplit
 from viper_orchestrator.visintent.tracking.db_utils import (
     _create_or_update_entry,
 )
@@ -95,7 +96,7 @@ for cluster, request in zip(clusters, requests):
     )
     # use the cluster's capture id(s) to assign all associated ImageRecords
     # to the request
-    response = assign_records_from_capture_id.__wrapped__(fakewsgi)
+    response = assign_records_from_capture_ids.__wrapped__(fakewsgi)
     # make sure that the attempt failed if the capture id was already described
     if response.content.decode("utf-8").startswith("Capture ID(s)"):
         assert (
@@ -149,7 +150,7 @@ try:
     ].index[0]
     server.serve_to_ctx(ix, **LOSSLESS_KWARGS)
     time.sleep(2)  # wait a healthy beat for product creation
-    assert ProtectedListEntry.from_pid(lossy0.product_id).has_lossless is True
+    assert viper_orchestrator.db.table_utils.has_lossless is True
     print(
         f"checked PL response to simulated lossless downlink of "
         f"{lossy0.product_id}"

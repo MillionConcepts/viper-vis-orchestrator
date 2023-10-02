@@ -1,19 +1,24 @@
 """django view functions and helpers."""
 import datetime as dt
 import shutil
+from typing import Union
 
 from cytoolz import groupby
-from django.http import HttpResponse
+from django.core.handlers.wsgi import WSGIRequest
+from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
 from sqlalchemy import select
 
+from viper_orchestrator.db.table_utils import (
+    has_lossless, image_request_capturesets, get_capture_ids, get_record_ids,
+    records_from_capture_ids
+)
 from viper_orchestrator.db import OSession
 from viper_orchestrator.visintent.tracking.forms import (
     RequestForm,
     PLSubmission,
     BadURLError, AlreadyLosslessError, AlreadyDeletedError,
-    image_request_capturesets,
 )
 from viper_orchestrator.visintent.tracking.forms import (
     request_supplementary_path,
@@ -37,9 +42,9 @@ def imagerequest(request):
     template = "image_request.html" if editing is True else "request_view.html"
     bound = {f.name: f.value for f in tuple(form)}
     # these variables are used only for non-editing display
-    showpano = bound["imaging_mode"]() == "navcam_panoramic_sequence"
+    showpano = bound["camera_request"]() == "navcam_panoramic_sequence"
     showslice = (bound["need_360"]() is True) and showpano
-    if form.request_id is None and editing is False:
+    if form.id is None and editing is False:
         return HttpResponse(
             "cannot generate view for nonexistent image request", status=400
         )
@@ -84,7 +89,7 @@ def submitrequest(request):
             form.add_error(None, str(ve))
             return render(request, "image_request.html", {"form": form})
         if (fileobj := request.FILES.get("supplementary_file")) is not None:
-            filepath = request_supplementary_path(row.request_id, fileobj.name)
+            filepath = request_supplementary_path(row.id, fileobj.name)
             shutil.rmtree(filepath.parent, ignore_errors=True)
             filepath.parent.mkdir(parents=True, exist_ok=True)
             with open(filepath, "wb") as stream:
@@ -97,22 +102,22 @@ def requestlist(request):
     """prep and render list of all existing requests"""
     with OSession() as session:
         rows = session.scalars(select(ImageRequest)).all()
-    # noinspection PyUnresolvedReferences
-    rows.sort(key=lambda r: r.request_time, reverse=True)
-    records = []
-    for row in rows:
-        record = {
-            "title": row.title,
-            "request_time": row.request_time,
-            "capture_id": row.capture_id,
-            "view_url": (
-                f"/imagerequest?request_id={row.request_id}&editing=false"
-            ),
-            "request_id": row.request_id,
-            "pagetitle": "Image Request List"
-        }
-        records.append(record)
-    # TODO: paginate, preferably configurably
+        # noinspection PyUnresolvedReferences
+        rows.sort(key=lambda r: r.request_time, reverse=True)
+        records = []
+        for row in rows:
+            record = {
+                "title": row.title,
+                "request_time": row.request_time,
+                "capture_id": get_capture_ids(row, as_str=True),
+                "view_url": (
+                    f"/imagerequest?request_id={row.id}&editing=false"
+                ),
+                "request_id": row.id,
+                "pagetitle": "Image Request List"
+            }
+            records.append(record)
+        # TODO: paginate, preferably configurably
     return render(request, "request_list.html", {"records": records})
 
 
@@ -163,7 +168,7 @@ def pllist(request):
     }
     records = []
     for entry in entries:
-        if entry.has_lossless or entry.superseded:
+        if has_lossless(entry) or entry.superseded:
             continue
         record = {
             "image_id": entry.image_id,
@@ -251,7 +256,9 @@ def imagelist(request):
 
 
 @never_cache
-def assign_records_from_capture_id(request):
+def assign_records_from_capture_ids(
+    request: WSGIRequest
+) -> Union[HttpResponse, HttpResponseRedirect]:
     """(re)assign capture ids to an image request"""
     # TODO: better error messages
     cids = request.GET["capture-id"]
@@ -271,14 +278,8 @@ def assign_records_from_capture_id(request):
             request.GET["id"] == ImageRequest.id
         )
         image_request = session.scalars(selector).one()
-        records = []
-        for cid in cids:
-            selector = select(ImageRecord).where(cid == ImageRecord.capture_id)
-            records += session.scalars(selector).all()
-        if (
-            set(map(lambda i: i.id, records))
-            == set(map(lambda i: i.id, image_request.image_records))
-        ):
+        records = records_from_capture_ids(cids, session)
+        if get_record_ids(records) == get_record_ids(image_request):
             return redirect("/requestlist")
         try:
             image_request.image_records = records
@@ -293,6 +294,3 @@ def pages(request):
     return render(request, "pages.html")
 
 
-def intsplit(comma_separated_numbers) -> set[int]:
-    """convert string of comma-separated numbers into set of integers"""
-    return set(map(int, comma_separated_numbers.split(",")))

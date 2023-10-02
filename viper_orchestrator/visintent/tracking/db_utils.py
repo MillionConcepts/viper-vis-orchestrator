@@ -3,6 +3,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound
 
 from func import get_argnames
+from viper_orchestrator.db.table_utils import image_request_capturesets
+from viper_orchestrator.visintent.tracking.forms import RequestForm
 
 
 def _create_or_update_entry(
@@ -17,6 +19,19 @@ def _create_or_update_entry(
         else:
             ref = form.cleaned_data[pivot]
         assert ref not in (None, "")
+        # capture_id has been cut from ImageRequest so we have to explicitly
+        # generate capturesets here. a little ugly but no alternative.
+        # TODO, maybe: refactor this function as it is now handling too many
+        #  special cases.
+        if pivot == "capture_id" and isinstance(form, RequestForm):
+            cids = set(map(int, ref.split(",")))
+            ref = [
+                r
+                for r, cs
+                in image_request_capturesets().items()
+                if cs == cids
+            ][0]
+            pivot = "id"
         # noinspection PyTypeChecker
         selector = select(form.table_class).where(
             getattr(form.table_class, pivot) == ref
