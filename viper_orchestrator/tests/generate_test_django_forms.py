@@ -32,7 +32,7 @@ from viper_orchestrator.visintent.tracking.forms import (
     AlreadyLosslessError,
 )
 from viper_orchestrator.visintent.tracking.views import (
-    assigncaptures,
+    assign_records_from_capture_id,
     intsplit,
 )
 from viper_orchestrator.visintent.tracking.db_utils import (
@@ -41,10 +41,13 @@ from viper_orchestrator.visintent.tracking.db_utils import (
 
 # clean up
 with OSession() as session:
-    ImageRequest.__table__.drop(ENGINE)
-    ImageRequest.metadata.create_all(ENGINE)
-    ProtectedListEntry.__table__.drop(ENGINE)
-    ProtectedListEntry.metadata.create_all(ENGINE)
+    # cannot just drop tables because of FOREIGN KEY relationships to
+    # ImageRecord
+    for table in ImageRequest, ProtectedListEntry:
+        rows = session.scalars(select(table)).all()
+        for row in rows:
+            session.delete(row)
+    session.commit()
     products = session.scalars(select(ImageRecord)).all()
 
 # make some random RequestForms and use them to create ImageRequests in the db
@@ -87,11 +90,12 @@ for cluster, request in zip(clusters, requests):
     fakewsgi = FakeWSGIRequest(
         {
             "capture-id": ",".join(str(p.capture_id) for p in cluster),
-            "request-id": str(request.request_id),
+            "id": str(request.id),
         }
     )
-    # assign the cluster's capture id(s) to the requests
-    response = assigncaptures.__wrapped__(fakewsgi)
+    # use the cluster's capture id(s) to assign all associated ImageRecords
+    # to the request
+    response = assign_records_from_capture_id.__wrapped__(fakewsgi)
     # make sure that the attempt failed if the capture id was already described
     if response.content.decode("utf-8").startswith("Capture ID(s)"):
         assert (
@@ -102,11 +106,11 @@ for cluster, request in zip(clusters, requests):
     # otherwise make sure the assignment succeeded
     with OSession() as session:
         selector = select(ImageRequest).where(
-            ImageRequest.request_id == fakewsgi.GET["request-id"]
+            ImageRequest.id == fakewsgi.GET["id"]
         )
         request = session.scalars(selector).one()
         total_requests += 1
-        assert intsplit(request.capture_id) == intsplit(
+        assert request.image_records[0].capture_id in intsplit(
             fakewsgi.GET["capture-id"]
         )
     used_captures |= set(p.capture_id for p in cluster)

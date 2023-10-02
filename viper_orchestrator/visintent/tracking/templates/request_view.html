@@ -14,8 +14,8 @@
         </label>
     {% else %}
         <h3>viewing image request  <a href="/imagerequest?request_id={{ form.request_id }}">edit</a></h3>
-        <label for="hidden-request-id-input">
-            <input type="number" style="display: none;" id="hidden-request-id-input" name="request_id" value={{ form.request_id }}>
+        <label for="hidden-id-input">
+            <input type="number" style="display: none;" id="hidden-id-input" name="request_id" value={{ form.request_id }}>
         </label>
     {% endif %}
     {% for field in form %}

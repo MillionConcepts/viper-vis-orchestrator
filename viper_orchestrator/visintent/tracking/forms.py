@@ -6,6 +6,7 @@ from cytoolz import keyfilter
 from django import forms
 from django.core.exceptions import ValidationError
 from sqlalchemy import select
+from sqlalchemy.orm import DeclarativeBase
 
 from viper_orchestrator.db import OSession
 from viper_orchestrator.visintent.tracking.tables import (
@@ -17,10 +18,22 @@ from viper_orchestrator.visintent.visintent.settings import (
     MEDIA_URL,
 )
 from vipersci.vis.db.image_requests import ImageRequest
+from vipersci.vis.db.light_records import luminaire_names
 
 
 class BadURLError(ValueError):
     pass
+
+
+def image_request_capturesets():
+    with OSession() as session:
+        requests = session.scalars(select(ImageRequest)).all()
+    capture_sets = {}
+    for request in requests:
+        capture_sets[request.id] = set(
+            map(lambda i: i.capture_id, request.image_records)
+        )
+    return capture_sets
 
 
 class RequestForm(forms.Form):
@@ -83,11 +96,11 @@ class RequestForm(forms.Form):
         return filepath.name, file_url
 
     @classmethod
-    def from_request_id(cls, request_id):
+    def from_request_id(cls, id):
         with OSession() as session:
             # noinspection PyTypeChecker
             selector = select(ImageRequest).where(
-                ImageRequest.request_id == request_id
+                ImageRequest.id == id
             )
             request = session.scalars(selector).one()
             return cls(capture_id=request.capture_id, image_request=request)
@@ -96,7 +109,7 @@ class RequestForm(forms.Form):
     def from_capture_id(cls, capture_id):
         request_id = None
         cset = set(map(int, str(capture_id).split(",")))
-        for rid, cids in ImageRequest.capturesets().items():
+        for rid, cids in image_request_capturesets().items():
             if cids == cset:
                 return cls.from_request_id(request_id)
             elif not cset.isdisjoint(cids):
@@ -174,10 +187,10 @@ class RequestForm(forms.Form):
             {"placeholder": "rover location", "id": "rover-location"}
         ),
     )
-    imaging_mode = forms.ChoiceField(
+    camera_request = forms.ChoiceField(
         required=True,
         widget=forms.Select(
-            attrs={"value": "navcam_left", "id": "imaging-mode"}
+            attrs={"value": "navcam_left", "id": "camera-request"}
         ),
         choices=[
             ("navcam_left", "NavCam Left"),
@@ -206,8 +219,8 @@ class RequestForm(forms.Form):
     compression = forms.ChoiceField(
         required=True,
         widget=forms.Select(attrs={"id": "compression-request"}),
-        initial="Lossy",
-        choices=[("Lossy", "Lossy"), ("Lossless", "Lossless")],
+        initial="LOSSY",
+        choices=[("LOSSY", "Lossy"), ("LOSSLESS", "Lossless")],
     )
     # TODO: the following fields will be hidden by js for non-pano images
     luminaires = forms.MultipleChoiceField(
@@ -218,14 +231,7 @@ class RequestForm(forms.Form):
         choices=[
             ("default", "default"),
             ("none", "none"),
-            ("navlight_left", "NavLight Left"),
-            ("navlight_right", "NavLight Right"),
-            ("hazlight_front_left", "HazLight Front Left"),
-            ("hazlight_front_right", "HazLight Front Right"),
-            ("hazlight_right_side", "HazLight Right Side"),
-            ("hazlight_left_side", "HazLight Left Side"),
-            ("hazlight_back_left", "HazLight Back Left"),
-            ("hazlight_back_right", "HazLight Back Right"),
+            *((k, v) for k, v in luminaire_names.items())
         ],
     )
     # Note that django checkboxinput widgets must have required=False to allow
@@ -295,13 +301,40 @@ class RequestForm(forms.Form):
         self.request_time = dt.datetime.now()
         return self.cleaned_data
 
+    def reformat_camera_request(self):
+        """
+        reformat camera request as expressed in the user interface into
+        imaging mode/camera type/hazcam seq as desired by the ImageRequest
+        table
+        """
+        # note that only aftcams/navcams have image_mode
+        request = self.cleaned_data['camera_request']
+        self.camera_type = request.split("_")[0].upper()
+        if request == 'hazcam_any':
+            self.generalities = ('Any',)
+            self.hazcams = ()
+        elif 'hazcam' in request:
+            self.hazcams = self.cleaned_data['camera_request']
+        elif request == 'navcam_panoramic_sequence':
+            self.image_mode = 'PANORAMA'
+        # note that AftCams and NavCams use left/right, not port/starboard
+        elif 'left' in request:
+            self.image_mode = 'LEFT'
+        elif 'right' in request:
+            self.image_mode = 'RIGHT'
+        elif 'stereo' in request:
+            self.image_mode = 'STEREO'
+
     # this is actually an optional set of integers, but, in form submission, we
     # retain / parse it as a string for UI reasons. TODO, maybe: clean that up.
     capture_id: Optional[str] = None
     product_ids: Optional[set[str]] = None
-    request_id: Optional[int] = None
+    id: Optional[int] = None
     request_time: Optional[dt.datetime] = None
     table_class = ImageRequest
+    image_mode = None
+    camera_type = None
+    hazcams = None
 
 
 class AlreadyLosslessError(ValidationError):

@@ -2,7 +2,7 @@
             <td><a href={{ record.view_url }}>{{ record.title }}</a></td>
             <td>{{ record.request_time }}</td>
             <td>
-                <form method="GET" action="/assigncaptures">
+                <form method="GET" action="/assign_records_from_capture_id">
                 <label for="capture-input-{{ record.request_id }}">
                     <input id="capture-input-{{ record.request_id }}"
                            type="text"

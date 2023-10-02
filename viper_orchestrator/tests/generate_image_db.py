@@ -30,7 +30,7 @@ print("initializing mock YAMCS server")
 server = make_mock_server(station.get_delegate("watcher")["obj"])
 try:
     # send some mock events
-    max_products, total_products = 5, 0
+    max_products, total_products = 40, 0
     print("spooling mock YAMCS publications...", end="\n")
     for i in range(max_products):
         try:

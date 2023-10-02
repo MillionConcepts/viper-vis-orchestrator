@@ -47,21 +47,21 @@
     </div>
 </form>
 <script>
-    const imagingMode = document.getElementById('imaging-mode');
+    const cameraRequest = document.getElementById('camera-request');
     const needs360 = document.getElementById('need-360');
     const panoOnlyInputs = document.getElementsByClassName('pano-only');
     const sliceInputs = document.getElementsByClassName('slice-field');
     const togglePanoVisibility = function() {
-        const display = (imagingMode.value === 'navcam_panoramic_sequence') ? 'block' : 'none';
+        const display = (cameraRequest.value === 'navcam_panoramic_sequence') ? 'block' : 'none';
         Array.from(panoOnlyInputs).forEach((input) => {input.style.display = display})
     };
     const toggleSliceVisibility = function() {
-        const pano = imagingMode.value === 'navcam_panoramic_sequence'
+        const pano = cameraRequest.value === 'navcam_panoramic_sequence'
         const slice = needs360.checked === false
         const display = pano && slice ? 'block' : 'none'
         Array.from(sliceInputs).forEach((input) => {input.style.display = display})
     };
-    imagingMode.addEventListener('change', togglePanoVisibility);
+    cameraRequest.addEventListener('change', togglePanoVisibility);
     needs360.addEventListener('change', toggleSliceVisibility);
     document.addEventListener("DOMContentLoaded", togglePanoVisibility)
     document.addEventListener("DOMContentLoaded", toggleSliceVisibility)

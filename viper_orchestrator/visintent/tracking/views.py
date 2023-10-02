@@ -250,14 +250,14 @@ def imagelist(request):
 
 
 @never_cache
-def assigncaptures(request):
+def assign_records_from_capture_id(request):
     """(re)assign capture ids to an image request"""
     # TODO: better error messages
-    cid = request.GET["capture-id"]
-    cid = None if cid.lower() in ("none", "") else cid
-    if cid is not None:
+    cids = request.GET["capture-id"]
+    cids = None if cids.lower() in ("none", "") else cids
+    if cids is not None:
         try:
-            cid = cid.replace(" ", "").strip(",")
+            cids = tuple(map(int, cids.replace(" ", "").strip(",").split(",")))
         except (ValueError, AttributeError, TypeError):
             return HttpResponse(
                 "capture id(s) must be 'none' (case-insensitive), blank, a "
@@ -267,13 +267,20 @@ def assigncaptures(request):
     with OSession() as session:
         # noinspection PyTypeChecker
         selector = select(ImageRequest).where(
-            request.GET["request-id"] == ImageRequest.request_id
+            request.GET["id"] == ImageRequest.id
         )
         image_request = session.scalars(selector).one()
-        if image_request.capture_id == cid:
+        records = []
+        for cid in cids:
+            selector = select(ImageRecord).where(cid == ImageRecord.capture_id)
+            records += session.scalars(selector).all()
+        if (
+            set(map(lambda i: i.id, records))
+            == set(map(lambda i: i.id, image_request.image_records))
+        ):
             return redirect("/requestlist")
         try:
-            image_request.capture_id = cid
+            image_request.image_records = records
             image_request.request_time = dt.datetime.now()
         except ValueError as ve:
             return HttpResponse(str(ve))
