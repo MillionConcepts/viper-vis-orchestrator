@@ -65,10 +65,14 @@ class ProtectedListEntry(AppBase):
     # image_id and ccu are autopopulated from the VIS ID provided by the user
     image_id = mapped_column(Integer, nullable=False, doc="memory slot number")
     start_time = mapped_column(
-        DateTime, nullable=False, doc="start time of associated image"
+        DateTime(timezone=True),
+        nullable=False,
+        doc="start time of associated image"
     )
     request_time = mapped_column(
-        DateTime, nullable=False, doc="submission/edit time for PL request"
+        DateTime(timezone=True),
+        nullable=False,
+        doc="submission/edit time for PL request"
     )
     # 0 or 1,, populated by checking camera against CCU hash
     ccu = mapped_column(Integer, nullable=False, doc="CCU number")

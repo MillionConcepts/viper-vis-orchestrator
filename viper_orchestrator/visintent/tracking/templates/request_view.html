@@ -3,7 +3,7 @@
 <body>
 {% include "layouts/nav.html" %}
 <div id="form-content">
-    {% if form.capture_id is not None%}
+    {% if form.capture_id != ""%}
         <h3>viewing intent information for capture id(s) {{ form.capture_id }}  <a href="/imagerequest?request_id={{ form.request_id }}">edit</a></h3>
         {% if form.product_ids|length > 0 %}
             <h4>associated product ids:</h4>
@@ -13,9 +13,9 @@
             <input type="text" style="display: none;" id="hidden-capture-id-input" name="capture_id" value={{ form.capture_id }}>
         </label>
     {% else %}
-        <h3>viewing image request  <a href="/imagerequest?request_id={{ form.request_id }}">edit</a></h3>
+        <h3>viewing image request  <a href="/imagerequest?request_id={{ form.id }}">edit</a></h3>
         <label for="hidden-id-input">
-            <input type="number" style="display: none;" id="hidden-id-input" name="request_id" value={{ form.request_id }}>
+            <input type="number" style="display: none;" id="hidden-id-input" name="id" value={{ form.id }}>
         </label>
     {% endif %}
     {% for field in form %}

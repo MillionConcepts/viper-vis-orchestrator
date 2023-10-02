@@ -5,9 +5,7 @@ import time
 import django
 from sqlalchemy import select
 
-import viper_orchestrator.db.table_utils
 from viper_orchestrator.db import OSession
-from viper_orchestrator.db.runtime import ENGINE
 from viper_orchestrator.station import definition as vsd
 from viper_orchestrator.tests.utilities import (
     sample,
@@ -17,9 +15,10 @@ from viper_orchestrator.tests.utilities import (
     make_mock_server,
     make_random_pl_submission,
 )
+from viper_orchestrator.db.table_utils import has_lossless
+from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest
-from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
 
 # note that django setup _must_ occur before importing any modules that
 # rely on the django API
@@ -150,7 +149,7 @@ try:
     ].index[0]
     server.serve_to_ctx(ix, **LOSSLESS_KWARGS)
     time.sleep(2)  # wait a healthy beat for product creation
-    assert viper_orchestrator.db.table_utils.has_lossless is True
+    assert ProtectedListEntry.from_pid(lossy0.product_id).has_lossless is True
     print(
         f"checked PL response to simulated lossless downlink of "
         f"{lossy0.product_id}"

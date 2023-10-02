@@ -168,7 +168,7 @@ def pllist(request):
     }
     records = []
     for entry in entries:
-        if has_lossless(entry) or entry.superseded:
+        if entry.has_lossless or entry.superseded:
             continue
         record = {
             "image_id": entry.image_id,
