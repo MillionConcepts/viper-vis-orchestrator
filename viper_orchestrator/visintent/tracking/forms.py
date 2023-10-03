@@ -17,6 +17,7 @@ from viper_orchestrator.visintent.visintent.settings import (
     MEDIA_ROOT,
     MEDIA_URL,
 )
+from vipersci.pds.pid import vis_instruments, vis_instrument_aliases
 from vipersci.vis.db.image_requests import ImageRequest
 from vipersci.vis.db.light_records import luminaire_names
 
@@ -29,12 +30,12 @@ class RequestForm(forms.Form):
     """form for submitting or editing an image request."""
 
     def __init__(
-        self,
-        *args,
-        capture_id=None,
-        image_request=None,
-        request_id=None,
-        **kwargs,
+            self,
+            *args,
+            capture_id=None,
+            image_request: Optional[ImageRequest] = None,
+            request_id=None,
+            **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.capture_id, self.image_request = capture_id, image_request
@@ -51,7 +52,13 @@ class RequestForm(forms.Form):
                     field.required, field.disabled = False, True
         if image_request is not None:
             for field_name, field in self.fields.items():
-                if field_name in dir(image_request):
+                if field_name == 'compression':
+                    field.initial = image_request.compression.name.capitalize()
+                elif field_name == 'camera_request':
+                    field.initial = self._image_request_to_camera_request(
+                        image_request
+                    )
+                elif field_name in dir(image_request):
                     field.initial = getattr(image_request, field_name)
             self.id = image_request.id
             if request_id is not None:
@@ -187,11 +194,11 @@ class RequestForm(forms.Form):
         choices=[
             ("navcam_left", "NavCam Left"),
             ("navcam_right", "NavCam Right"),
-            ("navcam_stereo_pair", "NavCam Stereo Pair"),
-            ("navcam_panoramic_sequence", "NavCam Panorama"),
+            ("navcam_stereo", "NavCam Stereo"),
+            ("navcam_panorama", "NavCam Panorama"),
             ("aftcam_left", "AftCam Left"),
             ("aftcam_right", "AftCam Right"),
-            ("aftcam_stereo_pair", "AftCam Stereo Pair"),
+            ("aftcam_stereo", "AftCam Stereo"),
             ("hazcam_any", "HazCam (any)"),
             ("hazcam_forward_port", "HazCam Forward Port"),
             ("hazcam_forward_starboard", "HazCam Forward Starboard"),
@@ -293,40 +300,65 @@ class RequestForm(forms.Form):
         self.request_time = dt.datetime.now()
         return self.cleaned_data
 
+    @staticmethod
+    def _image_request_to_camera_request(request: ImageRequest):
+        """
+        reformat fields of an ImageRequest into the single camera request
+        field used in this form
+        """
+        if request.camera_type.name == "HAZCAM":
+            # TODO: change this if we _do_ have multiple hazcams in a request
+            if not isinstance(request.hazcams, str):
+                cam = request.hazcams[0]
+            else:
+                cam = request.hazcams
+            if cam == "Any":
+                camera_request = 'hazcam_any'
+            else:
+                camera_request = vis_instruments[cam].lower().replace(" ", "_")
+        else:
+            camera_request = "_".join(
+                s.lower()
+                for s in (request.camera_type.name, request.imaging_mode.name)
+            )
+        return camera_request
+
     def reformat_camera_request(self):
         """
         reformat camera request as expressed in the user interface into
         imaging mode/camera type/hazcam seq as desired by the ImageRequest
-        table
+        table. assumes this is a bound form that has been populated from the
+        UI.
         """
-        # note that only aftcams/navcams have image_mode
+        # note that only aftcams/navcams have imaging_mode
         request = self.cleaned_data["camera_request"]
-        self.camera_type = request.split("_")[0].upper()
-        if request == "hazcam_any":
-            self.generalities = ("Any",)
-            self.hazcams = ()
-        elif "hazcam" in request:
-            self.hazcams = self.cleaned_data["camera_request"]
-        elif request == "navcam_panoramic_sequence":
-            self.image_mode = "PANORAMA"
-        # note that AftCams and NavCams use left/right, not port/starboard
-        elif "left" in request:
-            self.image_mode = "LEFT"
-        elif "right" in request:
-            self.image_mode = "RIGHT"
-        elif "stereo" in request:
-            self.image_mode = "STEREO"
+        ct, mode = request.split("_", maxsplit=1)
+        self.camera_type = ct.upper()
+        self.generalities = ("Any",)
+        if self.camera_type == "HAZCAM":
+            if mode == "any":
+                self.hazcams = ("Any",)
+            else:
+                # TODO: change this if we have multiple hazcams
+                self.hazcams = [
+                    vis_instrument_aliases[request.replace("_", " ")]
+                ]
+        else:
+            self.hazcams = ("Any",)
+            self.imaging_mode = mode.upper()
 
-    # this is actually an optional set of integers, but, in form submission, we
-    # retain / parse it as a string for UI reasons. TODO, maybe: clean that up.
+    # this is actually an optional set of integers, but, in form submission,
+    # we retain / parse it as a string for UI reasons. TODO, maybe: clean
+    #  that up
     capture_id: Optional[str] = None
     product_ids: Optional[set[str]] = None
     id: Optional[int] = None
     request_time: Optional[dt.datetime] = None
     table_class = ImageRequest
-    image_mode = None
+    imaging_mode = None
     camera_type = None
     hazcams = None
+    generalities = None
 
 
 class AlreadyLosslessError(ValidationError):

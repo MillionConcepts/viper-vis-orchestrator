@@ -54,8 +54,17 @@ with OSession() as session:
 for _ in range(len(products)):
     requestform = RequestForm()
     randomize_form(requestform)
+    requestform.reformat_camera_request()
+    del requestform.cleaned_data['camera_request']
     with OSession() as session:
-        _create_or_update_entry(requestform, session, "capture_id")
+        _create_or_update_entry(
+            requestform,
+            session,
+            "capture_id",
+            extra_attrs=(
+                "imaging_mode", "camera_type", "hazcams", "generalities"
+            )
+        )
         session.commit()
 
 with OSession() as session:

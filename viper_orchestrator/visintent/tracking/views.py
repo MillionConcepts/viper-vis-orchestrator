@@ -10,11 +10,14 @@ from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
 from sqlalchemy import select
 
+from viper_orchestrator.db import OSession
 from viper_orchestrator.db.table_utils import (
-    has_lossless, image_request_capturesets, get_capture_ids, get_record_ids,
+    image_request_capturesets, get_capture_ids, get_record_ids,
     records_from_capture_ids
 )
-from viper_orchestrator.db import OSession
+from viper_orchestrator.visintent.tracking.db_utils import (
+    _create_or_update_entry
+)
 from viper_orchestrator.visintent.tracking.forms import (
     RequestForm,
     PLSubmission,
@@ -26,9 +29,6 @@ from viper_orchestrator.visintent.tracking.forms import (
 from viper_orchestrator.visintent.tracking.tables import (
     CCU_HASH,
     ProtectedListEntry,
-)
-from viper_orchestrator.visintent.tracking.db_utils import (
-    _create_or_update_entry
 )
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest
@@ -46,7 +46,8 @@ def imagerequest(request):
     showslice = (bound["need_360"]() is True) and showpano
     if form.id is None and editing is False:
         return HttpResponse(
-            "cannot generate view for nonexistent image request", status=400
+            "cannot generate view for nonexistent image request",
+            status=400
         )
     filename, file_url = form.filepaths()
     try:
@@ -80,10 +81,19 @@ def submitrequest(request):
     if form.is_valid() is False:
         return render(request, "image_request.html", {"form": form})
     del form.cleaned_data["supplementary_file"]
+    form.reformat_camera_request()
+    del form.cleaned_data['camera_request']
     with OSession() as session:
         try:
             pivot = "capture_id" if request_id is None else "request_id"
-            row = _create_or_update_entry(form, session, pivot)
+            row = _create_or_update_entry(
+                form,
+                session,
+                pivot,
+                extra_attrs=(
+                    "imaging_mode", "camera_type", "hazcams", "generalities"
+                )
+            )
             session.commit()
         except ValueError as ve:
             form.add_error(None, str(ve))
