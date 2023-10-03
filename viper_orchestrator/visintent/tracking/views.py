@@ -42,7 +42,7 @@ def imagerequest(request):
     template = "image_request.html" if editing is True else "request_view.html"
     bound = {f.name: f.value for f in tuple(form)}
     # these variables are used only for non-editing display
-    showpano = bound["camera_request"]() == "navcam_panoramic_sequence"
+    showpano = bound["camera_request"]() == "navcam_panorama"
     showslice = (bound["need_360"]() is True) and showpano
     if form.id is None and editing is False:
         return HttpResponse(
@@ -287,6 +287,8 @@ def assign_records_from_capture_ids(
         selector = select(ImageRequest).where(
             request.GET["id"] == ImageRequest.id
         )
+        # TODO, maybe: assign capture even if there are no imagerecords
+        #  as of yet
         image_request = session.scalars(selector).one()
         records = records_from_capture_ids(cids, session)
         if get_record_ids(records) == get_record_ids(image_request):

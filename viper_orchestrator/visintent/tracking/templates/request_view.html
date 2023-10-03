@@ -3,7 +3,7 @@
 <body>
 {% include "layouts/nav.html" %}
 <div id="form-content">
-    {% if form.capture_id != ""%}
+    {% if form.capture_id == ""%}
         <h3>viewing intent information for capture id(s) {{ form.capture_id }}  <a href="/imagerequest?request_id={{ form.id }}">edit</a></h3>
         {% if form.product_ids|length > 0 %}
             <h4>associated product ids:</h4>

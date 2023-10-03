@@ -15,7 +15,6 @@ from viper_orchestrator.tests.utilities import (
     make_mock_server,
     make_random_pl_submission,
 )
-from viper_orchestrator.db.table_utils import has_lossless
 from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest
@@ -49,6 +48,7 @@ with OSession() as session:
             session.delete(row)
     session.commit()
     products = session.scalars(select(ImageRecord)).all()
+
 
 # make some random RequestForms and use them to create ImageRequests in the db
 for _ in range(len(products)):

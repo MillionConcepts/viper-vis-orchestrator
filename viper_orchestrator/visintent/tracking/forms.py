@@ -39,7 +39,7 @@ class RequestForm(forms.Form):
     ):
         super().__init__(*args, **kwargs)
         self.capture_id, self.image_request = capture_id, image_request
-        if self.capture_id is not None:
+        if self.capture_id is not None and len(self.capture_id) > 0:
             self.product_ids = capture_ids_to_product_ids(self.capture_id)
             # want to keep this a string for compatibility with the UI
             if isinstance(self.capture_id, set):
@@ -160,9 +160,48 @@ class RequestForm(forms.Form):
         widget=forms.SelectMultiple(
             attrs={"id": "ldst-elements", "value": "", "placeholder": ""}
         ),
+        # NOTE: placeholders, should be loaded from vipersci when available
         choices=[
-            ("placeholder_1", "placeholder_1"),
-            ("placeholder_2", "placeholder_2"),
+            ("1.a.1", "1.a.1"),
+            ("1.a.2", "1.a.2"),
+            ("1.a.3", "1.a.3"),
+            ("1.a.4", "1.a.4"),
+            ("1.a.5", "1.a.5"),
+            ("1.a.6", "1.a.6"),
+            ("1.b.1", "1.b.1"),
+            ("1.b.2", "1.b.2"),
+            ("1.c.1", "1.c.1"),
+            ("1.d.1", "1.d.1"),
+            ("2.a.1", "2.a.1"),
+            ("2.b.1", "2.b.1"),
+            ("2.b.2", "2.b.2"),
+            ("2.c.1", "2.c.1"),
+            ("2.c.2", "2.c.2"),
+            ("2.c.3", "2.c.3"),
+            ("2.c.4", "2.c.4"),
+            ("2.c.5", "2.c.5"),
+            ("2.c.6", "2.c.6"),
+            ("2.c.7", "2.c.7"),
+            ("2.c.8", "2.c.8"),
+            ("2.d.1", "2.d.1"),
+            ("2.e.1", "2.e.1"),
+            ("2.e.2", "2.e.2"),
+            ("2.e.3", "2.e.3"),
+            ("3.a.1", "3.a.1"),
+            ("3.a.2", "3.a.2"),
+            ("3.a.3", "3.a.3"),
+            ("3.b.1", "3.b.1"),
+            ("3.b.2", "3.b.2"),
+            ("4.a.1", "4.a.1"),
+            ("4.a.2", "4.a.2"),
+            ("4.b.1", "4.b.1"),
+            ("4.b.2", "4.b.2"),
+            ("4.b.3", "4.b.3"),
+            ("4.b.4", "4.b.4"),
+            ("4.b.5", "4.b.5"),
+            ("4.b.6", "4.b.6"),
+            ("4.c.1", "4.c.1"),
+            ("4.c.2", "4.c.2"),
         ],
     )
     users = forms.CharField(
