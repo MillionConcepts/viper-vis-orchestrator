@@ -11,17 +11,11 @@ from sqlalchemy import (
     select,
 )
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
-from sqlalchemy.orm import DeclarativeBase, mapped_column, validates
+from sqlalchemy.orm import mapped_column, validates, DeclarativeBase
 
 from viper_orchestrator.db import OSession
 from viper_orchestrator.db.table_utils import has_lossless
 from vipersci.vis.db.image_records import ImageRecord
-
-
-class AppBase(DeclarativeBase):
-    """convenient base for tables managed by the orchestrator"""
-
-    pass
 
 
 CCU_HASH = {
@@ -51,7 +45,11 @@ CCU_REVERSE_HASH = {
 }
 
 
-class ProtectedListEntry(AppBase):
+class IntentBase(DeclarativeBase):
+    pass
+
+
+class ProtectedListEntry(IntentBase):
     """table for entries on the Protected List."""
 
     def __init__(self, **kwargs):

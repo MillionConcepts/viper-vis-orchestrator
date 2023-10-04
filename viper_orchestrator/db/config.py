@@ -1,18 +1,21 @@
 from pathlib import Path
 
+from viper_orchestrator.db.utility_tables import LastTime
+from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest
 from vipersci.vis.db.image_stats import ImageStats
-from vipersci.vis.db.image_tags import ImageTag, taglist
+from vipersci.vis.db.image_tags import ImageTag
 from vipersci.vis.db.junc_image_record_tags import JuncImageRecordTag
 from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
 from vipersci.vis.db.ldst import LDST
 from vipersci.vis.db.ldst_verification import LDSTVerification
 from vipersci.vis.db.light_records import LightRecord
-from viper_orchestrator.visintent.tracking.tables import AppBase
+
 
 BASES = [
-    AppBase,
+    LastTime,
+    ProtectedListEntry,
     ImageRecord,
     ImageRequest,
     ImageStats,

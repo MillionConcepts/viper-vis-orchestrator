@@ -1,11 +1,12 @@
 """mocks for various components of the yamcs server and client"""
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+import datetime as dt
 from itertools import count
 from pathlib import Path
 from random import shuffle
 import time
-from typing import Literal, Any
+from typing import Literal, Any, Optional, Collection
 
 import pandas as pd
 from dustgoggles.structures import NestingDict
@@ -205,7 +206,7 @@ class MockServer:
             raise ValueError("unrecognized mode")
         self._pickable_indices, self.mode = None, mode
 
-    def _pick_event(self, event_ix=None):
+    def _pick_event(self, event_ix: Optional[int] = None) -> pd.Series:
         if event_ix:
             ix = event_ix
         else:
@@ -224,8 +225,18 @@ class MockServer:
         # print(record['generation_time'])
         return record
 
-    def _event_range(self, parameters, start=None, stop=None):
-        pass
+    def _get_event_range(
+        self,
+        parameters: Collection[str],
+        start: Optional[dt.datetime] = None,
+        stop: Optional[dt.datetime] = None
+    ) -> pd.DataFrame:
+        rangeslice = self.source
+        if start is not None:
+            rangeslice = rangeslice.loc[rangeslice['generation_time'] > start]
+        if stop is not None:
+            rangeslice = rangeslice[rangeslice['generation_time'] > start]
+        return rangeslice.loc[rangeslice['name'].isin(parameters)]
 
     def _set_parameters(self, parameters):
         self._parameters = parameters
@@ -280,14 +291,28 @@ class MockServer:
             event["eng_value"] = blob
         return event
 
-    def handle_archive_query(self, parameters, start=None, stop=None):
+    def get_archive_stream(
+        self,
+        parameters: Collection[str],
+        start: Optional[dt.datetime] = None,
+        stop: Optional[dt.datetime] = None,
+        **fields
+    ) -> list[NestingDict[str, Any]]:
         """
         return a list of NestingDicts structured like 'unpacked' yamcs
         ParameterData.
         """
-        pass
+        range_df = self._get_event_range(parameters, start, stop)
+        return [
+            self._create_structure(row, **fields)
+            for _, row in range_df.iterrows()
+        ]
 
-    def serve_event(self, event_ix=None, **fields) -> NestingDict[str, Any]:
+    def serve_event(
+        self,
+        event_ix: Optional[int] = None,
+        **fields
+    ) -> NestingDict[str, Any]:
         """
         return a NestingDict structured like 'unpacked' yamcs ParameterData.
         """
@@ -304,6 +329,14 @@ class MockServer:
             raise ValueError(".ctx attribute not assigned")
         event = self.serve_event(event_ix, **fields)
         self.ctx[event["name"]].append(event)
+
+    @property
+    def start_time(self):
+        return self.source['generation_time'].min()
+
+    @property
+    def stop_time(self):
+        return self.source['generation_time'].max()
 
     parameters = property(_get_parameters, _set_parameters)
     ctx = None

@@ -156,6 +156,8 @@ try:
     ix = server.source.loc[
         server.source["eng_value_imageHeader_lobt"] == lossy0.lobt
     ].index[0]
+    # TODO: place get-one-event function on Sensor in mock mode in order to be
+    #  able to replicate this in mock archive mode
     server.serve_to_ctx(ix, **LOSSLESS_KWARGS)
     time.sleep(2)  # wait a healthy beat for product creation
     assert ProtectedListEntry.from_pid(lossy0.product_id).has_lossless is True
