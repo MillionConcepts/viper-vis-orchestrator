@@ -34,9 +34,13 @@ def unpack_pickled_parameters(pickle_file: Union[str, Path]) -> pd.DataFrame:
     unpack parameters from a pickle file written by the packetreader utilities
     """
     records = pd.read_pickle(pickle_file)
-    cache = []
-    for rec in records:
-        cache += rec.pop("cache")
+    if not isinstance(records, list):
+        cache = []
+        for rec in records:
+            cache += rec.pop("cache")
+    else:
+        cache = records
+    del records
     processed = []
     for rec in cache:
         procrec = {}
@@ -49,7 +53,8 @@ def unpack_pickled_parameters(pickle_file: Union[str, Path]) -> pd.DataFrame:
             elif isinstance(v, (float, str, int, bytes)):
                 procrec[k] = v
             elif isinstance(v, dt.datetime):
-                procrec[k] = v.isoformat()
+                # procrec[k] = v.isoformat()
+                procrec[k] = v
             else:
                 raise TypeError("hmmm...what is this")
         processed.append(procrec)
@@ -153,6 +158,10 @@ def write_parquet_and_blobs(
         if f == "pivot":
             rec_df[f] = rec_df[f].astype(bool)
             fields.append(pa.field(f, pa.bool_(), False))
+        elif f == 'generation_time':
+            fields.append(
+                pa.field(f, pa.timestamp('ns', tz=rec_df.dtypes[f].tz))
+            )
         else:
             rec_df[f] = rec_df[f].astype(str)
             fields.append(pa.field(f, pa.string(), True))

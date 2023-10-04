@@ -166,6 +166,8 @@ viper-yamcs*/
 viper_orchestrator/media/
 *.sqlite3
 *.npy
+build_9*/
+*.pkl
 
 # application logs
 logs/

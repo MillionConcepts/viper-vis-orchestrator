@@ -7,12 +7,13 @@ from random import shuffle
 import time
 from typing import Literal, Any
 
+import pandas as pd
 from dustgoggles.structures import NestingDict
 from cytoolz import get_in
 from pyarrow import parquet
 
 from viper_orchestrator.yamcsutils.parameter_record_helpers import (
-    cast_to_nullable_integer
+    cast_to_nullable_integer,
 )
 
 
@@ -81,17 +82,48 @@ class MockContext:
 
 class MockYamcsClient:
     """mock for yamcs-client Client object"""
-    def __init__(self, ctx):
+
+    def __init__(self, ctx=None, server=None):
+        if ctx is None and server is None:
+            raise TypeError("either ctx or server must be defined")
         self.ctx = ctx
+        self.server = server
 
     def get_processor(self, instance, processor):
+        if self.ctx is None:
+            raise TypeError("must have self.ctx to generate a processor")
         return MockYamcsProcessor(self, instance, processor, self.ctx)
+
+    def get_archive(self, instance):
+        if self.server is None:
+            raise TypeError("must have self.server to generate an archive")
+        return MockYamcsArchive(self, instance, self.server)
+
+
+class MockYamcsArchive:
+    """
+    mock for yamcs-client ArchiveClient object.
+    note that the archive interface is 'pull' rather than 'push', so it needs
+    a direct reference to the mock server rather than to a mock websocket.
+    """
+
+    def __init__(self, client, instance, server):
+        self.instance = instance
+        self.server = server
+        self.client = client
+
+    def stream_parameter_values(self, parameters, start=None, stop=None):
+        pass
+
+    def list_parameter_values(self, parameters, start=None, stop=None):
+        raise NotImplementedError
 
 
 # overloading the term "processor" is v. confusing IMO, but I'm
 # following their naming structure.
 class MockYamcsProcessor:
     """mock for yamcs-client Processor object"""
+
     def __init__(self, client, instance, processor, ctx):
         self.instance = instance
         self.processor = processor
@@ -104,6 +136,7 @@ class MockYamcsProcessor:
 
 class MockSubscription:
     """mock for yamcs-client Subscription object"""
+
     def __init__(self, parameters, on_data, yamcs_processor, ctx, delay=0.1):
         if isinstance(parameters, str):
             raise TypeError("parameters must be a collection of str")
@@ -149,20 +182,25 @@ class MockServer:
     mock for the yamcs server, backed by a parquet file containing parameter
     data values and a folder of binary blobs.
     """
+
     def __init__(
         self,
         event_parquet="events.parquet",
         blobs_folder=Path(__file__).parent / "blobs/",
         mode: Literal[
             "no_replacement", "sequential", "replacement"
-        ] = "sequential"
+        ] = "sequential",
     ):
         # the parquet <-> pandas roundtrip converts some nan values to 'nan'
         self.source = cast_to_nullable_integer(
             parquet.read_table(event_parquet).to_pandas()
         ).replace("nan", float("nan"))
         self.blobs_folder = blobs_folder
-        self.log, self._parameters, self._pickable, = [], None, self.source
+        self.log, self._parameters, self._pickable, = (
+            [],
+            None,
+            self.source,
+        )
         if mode not in ("no_replacement", "sequential", "replacement"):
             raise ValueError("unrecognized mode")
         self._pickable_indices, self.mode = None, mode
@@ -185,6 +223,9 @@ class MockServer:
         self.log.append(record.name)
         # print(record['generation_time'])
         return record
+
+    def _event_range(self, parameters, start=None, stop=None):
+        pass
 
     def _set_parameters(self, parameters):
         self._parameters = parameters
@@ -225,10 +266,7 @@ class MockServer:
         return event
 
     def _add_blob(
-        self,
-        event: NestingDict,
-        data_type: Literal["eng", "raw"],
-        ix: int
+        self, event: NestingDict, data_type: Literal["eng", "raw"], ix: int
     ) -> NestingDict[str, Any]:
         matches = filter(
             lambda p: p.name.startswith(f"pivot_{ix}_{data_type}"),
@@ -241,6 +279,13 @@ class MockServer:
         else:
             event["eng_value"] = blob
         return event
+
+    def handle_archive_query(self, parameters, start=None, stop=None):
+        """
+        return a list of NestingDicts structured like 'unpacked' yamcs
+        ParameterData.
+        """
+        pass
 
     def serve_event(self, event_ix=None, **fields) -> NestingDict[str, Any]:
         """
