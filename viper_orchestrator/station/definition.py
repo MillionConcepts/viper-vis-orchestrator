@@ -1,7 +1,7 @@
 from pathlib import Path
 import random
 
-from viper_orchestrator.db.config import DATA_ROOT
+from viper_orchestrator.db.config import DATA_ROOT, PARAMETERS_OF_INTEREST
 from hostess.station.actors import InstructionFromInfo
 from hostess.station.station import Station
 
@@ -9,6 +9,7 @@ from viper_orchestrator.station.actors import (
     InsertIntoDatabase,
     thumbnail_instruction,
     process_image_instruction,
+    process_light_state_instruction,
 )
 
 # basic settings for delegates in this application
@@ -22,17 +23,22 @@ def create_station():
     # add an Actor that creates instructions to make image products when it
     # receives an Info message about a new image
     station.add_element(InstructionFromInfo, name="process_image")
-    station.process_image_target_name = "processor"
+    station.process_image_target_name = "image_processor"
     station.process_image_instruction_maker = process_image_instruction
     station.process_image_criteria = (
         lambda msg: msg["event_type"] == "image_published",
     )
-    # add an Actor that inserts ImageRecord objects (or conceivably anything
-    # else) into the database
+    station.add_element(InstructionFromInfo, name="process_light_state")
+    station.process_image_target_name = "light_processor"
+    station.process_image_instruction_maker = process_light_state_instruction
+    station.process_image_criteria = (
+        lambda msg: msg["event_type"] == "light_state_published",
+    )
+    # add an Actor that inserts SQLAlchemy DeclarativeBase objects
+    # (abstractions of table rows into the VIS database)
     station.add_element(InsertIntoDatabase)
-    # add an Actor that watches to see when the image_processor delegate writes
-    # a new TIFF file to disk (this could probably just be replaced with an
-    # action upon receiving a completion message)
+    # add an Actor that watches to see when the image_processor Delegate writes
+    # a new TIFF file to disk
     thumbnail_checker = InstructionFromInfo
     station.add_element(thumbnail_checker, name="thumbnail")
     # add an Actor that creates instructions to make thumbnails when we hear
@@ -59,17 +65,26 @@ def launch_delegates(station):
     thumbnail_launch_spec = {
         "elements": [("hostess.station.actors", "FuncCaller")]
     }
-    # raw product-making delegate
+    # create_image.create()-handling delegate
     station.launch_delegate(
-        "processor",
+        "image_processor",
         elements=(("viper_orchestrator.station.actors", "ImageProcessor"),),
         **DELKWARGS,
     )
-    # parameter-watching delegate
+    # LightRecord-making delegate
     station.launch_delegate(
-        "watcher",
+        "light_state_processor",
+        elements=(
+            ("viper_orchestrator.station.actors", "LightStateProcessor"),
+        ),
+        **DELKWARGS,
+    )
+    # parameter-watching delegate. note that to work correctly in mock mode,
+    # this should always be local so that it can interact with the
+    # locally-instantiated MockServer.
+    station.launch_delegate(
+        "parameter_watcher",
         elements=(("viper_orchestrator.station.actors", "ParameterSensor"),),
-        # has to be local to use the mock server correctly
         **DELKWARGS | {"context": "local"},
     )
     # tiff-write-watching delegate
@@ -78,26 +93,14 @@ def launch_delegates(station):
     )
     station.launch_delegate("thumbnail", **thumbnail_launch_spec, **DELKWARGS)
     station.set_delegate_properties(
-        "watcher",
+        "parameter_watcher",
         parameter_watch_mock=True,
-        parameter_watch_parameters=IMAGE_DATA_PARAMETERS,
+        parameter_watch_parameters=PARAMETERS_OF_INTEREST
     )
     station.set_delegate_properties(
-        "processor", image_processor_outdir=DATA_ROOT
+        "image_processor", image_processor_outdir=DATA_ROOT
     )
     station.set_delegate_properties(
         "thumbnail_watcher", **thumbnail_watch_config_spec
     )
-    # no special properties to set for the thumbnailer
-
-
-IMAGE_DATA_PARAMETERS = (
-    "/ViperGround/Images/ImageData/Hazcam_front_left_icer",
-    "/ViperGround/Images/ImageData/Hazcam_front_right_icer",
-    "/ViperGround/Images/ImageData/Hazcam_back_left_icer",
-    "/ViperGround/Images/ImageData/Hazcam_back_right_icer",
-    "/ViperGround/Images/ImageData/Navcam_left_icer",
-    "/ViperGround/Images/ImageData/Navcam_right_icer",
-    "/ViperGround/Images/ImageData/Aftcam_left_icer",
-    "/ViperGround/Images/ImageData/Aftcam_right_icer",
-)
+    # no special properties to set for the thumbnailer or LightRecord maker

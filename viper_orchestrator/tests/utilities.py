@@ -79,7 +79,7 @@ def make_mock_server(parameter_watch_delegate=None):
     binary blobs
     """
     server = MockServer(
-        event_parquet=MOCK_ROOT / "events.parquet",
+        events=MOCK_ROOT / "events.parquet",
         blobs_folder=MOCK_ROOT / "blobs/",
         # mode="replacement"
     )
