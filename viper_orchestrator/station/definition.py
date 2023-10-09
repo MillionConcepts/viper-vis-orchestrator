@@ -1,7 +1,12 @@
 from pathlib import Path
 import random
 
-from viper_orchestrator.db.config import DATA_ROOT, PARAMETERS_OF_INTEREST
+from viper_orchestrator.config import (
+    DATA_ROOT,
+    PARAMETERS,
+    LIGHT_LOGPATH,
+    STATION_LOG_ROOT,
+)
 from hostess.station.actors import InstructionFromInfo
 from hostess.station.station import Station
 
@@ -9,7 +14,6 @@ from viper_orchestrator.station.actors import (
     InsertIntoDatabase,
     thumbnail_instruction,
     process_image_instruction,
-    process_light_state_instruction,
 )
 
 # basic settings for delegates in this application
@@ -19,23 +23,17 @@ DELKWARGS = {"update_interval": 0.1, "context": "local", "n_threads": 4}
 def create_station():
     """creates the station"""
     host, port = "localhost", random.randint(10000, 20000)
-    station = Station(host, port, n_threads=12)
-    # add an Actor that creates instructions to make image products when it
-    # receives an Info message about a new image
+    station = Station(host, port, n_threads=12, logdir=STATION_LOG_ROOT)
+    # Actor that creates instructions to make image products when it receives
+    # an info Message about a new image
     station.add_element(InstructionFromInfo, name="process_image")
     station.process_image_target_name = "image_processor"
     station.process_image_instruction_maker = process_image_instruction
     station.process_image_criteria = (
         lambda msg: msg["event_type"] == "image_published",
     )
-    station.add_element(InstructionFromInfo, name="process_light_state")
-    station.process_image_target_name = "light_processor"
-    station.process_image_instruction_maker = process_light_state_instruction
-    station.process_image_criteria = (
-        lambda msg: msg["event_type"] == "light_state_published",
-    )
-    # add an Actor that inserts SQLAlchemy DeclarativeBase objects
-    # (abstractions of table rows into the VIS database)
+    # Actor that performs database inserts for SQLAlchemy DeclarativeBase
+    # objects sent by Delegates in completion or info Messages
     station.add_element(InsertIntoDatabase)
     # add an Actor that watches to see when the image_processor Delegate writes
     # a new TIFF file to disk
@@ -71,20 +69,23 @@ def launch_delegates(station):
         elements=(("viper_orchestrator.station.actors", "ImageProcessor"),),
         **DELKWARGS,
     )
-    # LightRecord-making delegate
+    # note that to work correctly in mock mode, the parameter-watching
+    # delegates should always be local context so that they can interact with
+    # the locally-instantiated MockServer.
+
+    # image parameter-watching delegate.
     station.launch_delegate(
-        "light_state_processor",
-        elements=(
-            ("viper_orchestrator.station.actors", "LightStateProcessor"),
-        ),
-        **DELKWARGS,
+        "image_watcher",
+        elements=(("viper_orchestrator.station.actors", "ImageSensor"),),
+        **DELKWARGS | {"context": "local"},
     )
-    # parameter-watching delegate. note that to work correctly in mock mode,
-    # this should always be local so that it can interact with the
-    # locally-instantiated MockServer.
+    # light state parameter-watching and handling delegate.
+    # unlike images, we encapsulate handling for these parameters in a single
+    # Delegate (and a single Sensor attached to that Delegate). see the
+    # docstring of viper_orchestrator.station.actors.LightSensor for rationale.
     station.launch_delegate(
-        "parameter_watcher",
-        elements=(("viper_orchestrator.station.actors", "ParameterSensor"),),
+        "light_watcher",
+        elements=(("viper_orchestrator.station.actors", "LightSensor"),),
         **DELKWARGS | {"context": "local"},
     )
     # tiff-write-watching delegate
@@ -92,10 +93,17 @@ def launch_delegates(station):
         "thumbnail_watcher", **thumbnail_watch_launch_spec, **DELKWARGS
     )
     station.launch_delegate("thumbnail", **thumbnail_launch_spec, **DELKWARGS)
+    # delegate configuration
     station.set_delegate_properties(
-        "parameter_watcher",
-        parameter_watch_mock=True,
-        parameter_watch_parameters=PARAMETERS_OF_INTEREST
+        "image_watcher",
+        image_watch_mock=True,
+        image_watch_parameters=[p for p in PARAMETERS if "Images" in p],
+    )
+    station.set_delegate_properties(
+        "light_watcher",
+        light_watch_mock=True,
+        light_watch_parameters=[p for p in PARAMETERS if "Light" in p],
+        light_watch_logpath=LIGHT_LOGPATH,
     )
     station.set_delegate_properties(
         "image_processor", image_processor_outdir=DATA_ROOT
@@ -103,4 +111,6 @@ def launch_delegates(station):
     station.set_delegate_properties(
         "thumbnail_watcher", **thumbnail_watch_config_spec
     )
-    # no special properties to set for the thumbnailer or LightRecord maker
+    # note that there are no special properties to set for the thumbnail maker.
+    # it uses a generic FuncCaller Actor and gets all the details from
+    # Instructions.

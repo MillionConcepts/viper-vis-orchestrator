@@ -4,7 +4,6 @@ import random
 from string import ascii_letters
 from typing import Optional, Mapping
 
-from cytoolz import curry
 from django.forms import (
     ChoiceField,
     MultipleChoiceField,
@@ -13,10 +12,13 @@ from django.forms import (
     CharField,
     DateTimeField,
 )
+from hostess.utilities import curry
 from sqlalchemy import select
+
+from viper_orchestrator.config import PARAMETERS, MOCK_EVENT_PARQUET, \
+    MOCK_BLOBS_FOLDER
 from vipersci.vis.db.image_records import ImageRecord
 
-from viper_orchestrator.station.definition import IMAGE_DATA_PARAMETERS
 from viper_orchestrator.db import OSession
 from viper_orchestrator.yamcsutils.mock import MockServer
 from viper_orchestrator.visintent.tracking.forms import PLSubmission
@@ -73,22 +75,22 @@ def image_records_by_compression():
     return compdict
 
 
-def make_mock_server(parameter_watch_delegate=None):
+def make_mock_server(ctx=None):
     """
     create a mock yamcs server backed by a parquet file and a directory of
     binary blobs
     """
     server = MockServer(
-        events=MOCK_ROOT / "events.parquet",
-        blobs_folder=MOCK_ROOT / "blobs/",
-        # mode="replacement"
+        events=MOCK_EVENT_PARQUET,
+        blobs_folder=MOCK_BLOBS_FOLDER,
+        mode="sequential"
     )
-    server.parameters = list(IMAGE_DATA_PARAMETERS)
-    if parameter_watch_delegate is not None:
-        # optionally, connect this server to the MockContext created when we
-        # set a watcher node's ParameterSensor to mock mode --
-        # this is a mock for connecting to the yamcs server's pub socket.
-        server.ctx = parameter_watch_delegate.sensors["parameter_watch"]._ctx
+    server.parameters = list(PARAMETERS)
+    # optionally, connect this server to a MockContext used by one or more
+    # ParameterSensors -- this is a mock for connecting to the yamcs server's
+    # pub socket.
+    if ctx is not None:
+        server.ctx = ctx
     return server
 
 

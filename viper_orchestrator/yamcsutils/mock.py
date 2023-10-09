@@ -48,7 +48,6 @@ class MockServer:
             cast_to_nullable_integer(parquet.read_table(events).to_pandas())
             .replace("nan", float("nan"))
             .sort_values(by='generation_time')
-            .reset_index(drop=True)
         )
         self.blobs_folder = blobs_folder
         self.log, self._parameters, self._pickable, = (

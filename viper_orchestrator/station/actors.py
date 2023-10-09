@@ -26,7 +26,7 @@ from typing import (
     Mapping,
 )
 
-from viper_orchestrator.db.config import BROWSE_ROOT
+from viper_orchestrator.config import BROWSE_ROOT
 from hostess.station.actors import reported
 from hostess.station.bases import (
     Actor,
@@ -52,9 +52,7 @@ from vipersci.vis import create_image
 from vipersci.vis.db.light_records import luminaire_names, LightRecord
 from yamcs.tmtc.model import ParameterValue
 from viper_orchestrator.db import OSession
-from viper_orchestrator.yamcsutils.mock import (
-    MockYamcsClient, MockContext, MockServer
-)
+from viper_orchestrator.yamcsutils.mock import MockYamcsClient, MockContext
 
 # noinspection PyTypeChecker
 IMAGERECORD_COLUMNS = frozenset(c.name for c in ImageRecord.__table__.columns)
@@ -77,15 +75,15 @@ def process_image_instruction(note) -> pro.Action:
     Instruction.
     """
     instrument = VISID.instrument_name(
-        note['data']['eng_value']['imageHeader']['cameraId']
+        note["data"]["eng_value"]["imageHeader"]["cameraId"]
     )
     timestamp = dt.datetime.fromtimestamp(
-        note['data']['eng_value']['imageHeader']["lobt"], tz=dt.timezone.utc
+        note["data"]["eng_value"]["imageHeader"]["lobt"], tz=dt.timezone.utc
     )
     action = make_action(
         name="process_image",
         localcall=pack_obj(note["data"]),
-        description={'title': f"{instrument} {timestamp}"}
+        description={"title": f"{instrument} {timestamp}"},
     )
     return make_instruction("do", action=action)
 
@@ -96,12 +94,11 @@ def thumbnail_instruction(note):
         module="viper_orchestrator.station.actors",
         kwargs={
             "inpath": Path(note["content"]),
-            "outpath": BROWSE_ROOT / Path(
-                note['content']
-            ).name.replace(".tif", "_thumb.jpg")
+            "outpath": BROWSE_ROOT
+            / Path(note["content"]).name.replace(".tif", "_thumb.jpg"),
         },
         context="process",
-        description={"title": Path(note['content']).name}
+        description={"title": Path(note["content"]).name},
     )
     return make_instruction("do", action=action)
 
@@ -155,13 +152,61 @@ class ImageCheck(Actor):
             {
                 "data": pdict,
                 "parameter": pdict["name"],
-                "event_type": "image_published"
+                "event_type": "image_published",
             },
-            self.owner
+            self.owner,
         )
 
     actortype = "action"
     name = "imagecheck"
+
+
+class LightStateProcessor(Actor):
+    """
+    actor that makes LightRecord objects from light state parameters.
+    intended to be attached to a LightSensor.
+    """
+
+    def match(self, pdict: dict, **_) -> bool:
+        validate_pdict(pdict)
+        if pdict["name"] != "/ViperRover/LightsControl/state":
+            raise NoMatch("not a light state parameter value")
+        return True
+
+    def execute(self, node: Node, light_pv: dict, **_):
+        columns = ("generation_time",) + tuple(luminaire_names.keys())
+        gentime = light_pv["generation_time"].replace(tzinfo=dt.timezone.utc)
+        lights = light_pv["eng_value"]
+        state, switch_on, switch_off = self.owner.memory.copy(), [], []
+        state["generation_time"] = gentime
+        for light in luminaire_names.keys():
+            measured = lights[light]["measuredState"]
+            if measured == "OFF" and self.owner.memory[light] is not False:
+                switch_off.append(light)
+                state[light] = False
+            elif measured == "ON" and self.owner.memory[light] is False:
+                switch_on.append(light)
+                state[light] = gentime
+        if len(switch_on) + len(switch_off) > 0:
+            if self.owner.logpath is not None:
+                with self.owner.logpath.open("a") as stream:
+                    dump = stringify_timedict(state)
+                    stream.write(f"{','.join(dump[c] for c in columns)}\n")
+        self.owner.memory = state
+        # note that we only write a record for a light _when it turns off_
+        if len(switch_off) == 0:
+            return
+        recs = []
+        for light in switch_off:
+            rec = LightRecord(
+                name=light,
+                start_time=self.owner.memory[light],
+                last_time=self.owner.memory["generation_time"],
+            )
+            recs.append(rec)
+        node.add_actionable_event(recs, "made_light_records")
+
+    name = "light_state_processor"
 
 
 class DBCheck(Actor):
@@ -183,147 +228,6 @@ class DBCheck(Actor):
 
     actortype = "action"
     name = "dbcheck"
-
-
-class ParameterSensor(Sensor, ABC):
-    """
-    constructs a yamcs client (optionally a mock one) and uses it to watch
-    for new values of specified parameters.
-    """
-
-    def __init__(self, processor_path=("viper", "realtime")):
-        super().__init__()
-        self._processor_path = processor_path
-        self.cache = []
-        self._push = push(self.cache)
-        self.checker = pop_from(cache=self.cache)
-        self._parameters = []
-        self._ctx, self._client, self._processor = None, None, None
-
-    def _set_parameters(self, parameters: Collection[str]):
-        self._parameters = list(parameters)
-        if self._ctx is None:
-            if self._mock is True:
-                self._ctx = MockContext()
-                self._client = MockYamcsClient(self._ctx)
-            else:
-                # TODO: add an 'unpacker'
-                raise NotImplementedError("have to pass the url etc")
-            self._processor = self._client.get_processor(*self._processor_path)
-        # TODO, maybe: something to remove / reset parameter subscriptions
-        self._subscription = self._processor.create_parameter_subscription(
-            self._parameters, self._push
-        )
-
-    def _get_parameters(self) -> list[str]:
-        return self._parameters
-
-    def _set_mock(self, is_mock: bool):
-        if not isinstance(is_mock, bool):
-            raise DoNotUnderstand("mock must be True or False")
-        if is_mock == self._mock:
-            return
-        self._mock = is_mock
-        # reinit client with specified mockness
-        self.parameters = self._parameters
-
-    def _get_mock(self) -> bool:
-        return self._mock
-
-    name = "parameter_watch"
-    parameters = property(_get_parameters, _set_parameters)
-    actions: tuple[Actor]
-    mock = property(_get_mock, _set_mock)
-    _mock = False
-    interface = ("parameters", "mock")
-
-
-class ImageSensor(ParameterSensor):
-    """
-    simple parameter sensor that distinguishes image publications from other
-    parameter types.
-    """
-    actions = (ImageCheck,)
-    name = "image_watch"
-
-
-class LightStateProcessor(Actor):
-    """
-    actor that makes LightRecord objects from light state parameters.
-    intended to be attached to a LightSensor.
-    """
-
-    def match(self, pdict: dict, **_) -> bool:
-        validate_pdict(pdict)
-        if pdict['name'] != "/ViperRover/LightsControl/state":
-            raise NoMatch("not a light state parameter value")
-        return True
-
-    def execute(self, node: Node, light_pv: dict, **_):
-        columns = ('generation_time',) + tuple(luminaire_names.keys())
-        gentime = light_pv['generation_time'].replace(tzinfo=dt.timezone.utc)
-        lights = light_pv['eng_value']
-        state, switch_on, switch_off = self.owner.memory.copy(), [], []
-        state['generation_time'] = gentime
-        for light in luminaire_names.keys():
-            measured = lights[light]['measuredState']
-            if measured == 'OFF' and self.owner.memory[light] is not False:
-                switch_off.append(light)
-                state[light] = False
-            elif measured == 'ON' and self.owner.memory[light] is False:
-                switch_on.append(light)
-                state[light] = gentime
-        if len(switch_on) + len(switch_off) > 0:
-            if self.owner.logpath is not None:
-                with self.owner.logpath.open('a') as stream:
-                    dump = stringify_timedict(state)
-                    stream.write(f"{','.join(dump[c] for c in columns)}\n")
-        self.owner.memory = state
-        # note that we only write a record for a light _when it turns off_
-        if len(switch_off) == 0:
-            return
-        recs = []
-        for light in switch_off:
-            rec = LightRecord(
-                name=light,
-                start_time=self.owner.memory[light],
-                last_time=self.owner.memory['generation_time']
-            )
-            recs.append(rec)
-        node.add_actionable_event(recs, "made_light_records")
-
-    name = 'light_state_processor'
-
-
-class LightSensor(ParameterSensor):
-    """
-    more complex parameter sensor that actually formats LightRecords. this is
-    encapsulated in a single Sensor because light state parameter values are
-    fast-cadence and generally do not change; it is less fragile to only hold
-    in-memory state in one place than to have it duplicated between two
-    separate delegates or to bother the Station constantly with pointless
-    parameter publications.
-    """
-
-    def __init__(self, processor_path=('viper', 'realtime')):
-        super().__init__(processor_path)
-        # TODO: we currently have no straightforward way to reinitialize this
-        #  after crash, because the LightRecord table doesn't tell us when
-        #  lights that are currently on came on. will need to use the
-        #  archive.
-        self.light_memory = {k: False for k in luminaire_names.keys()}
-
-    def get_logpath(self) -> Path:
-        return self._logpath
-
-    def set_logpath(self, logpath: Path):
-        self._logpath = Path(logpath)
-
-    name = 'light_watch'
-    actions = (LightStateProcessor,)
-    interface = ('parameters', 'mock', 'logpath')
-    logpath = property(get_logpath, set_logpath)
-    _logpath = None
 
 
 class ImageProcessor(Actor):
@@ -362,6 +266,119 @@ class ImageProcessor(Actor):
     name = "image_processor"
 
 
+class ParameterSensor(Sensor, ABC):
+    """
+    constructs a yamcs client (optionally a mock one) and uses it to watch
+    for new values of specified parameters.
+    """
+
+    def __init__(self, processor_path=("viper", "realtime")):
+        super().__init__()
+        self._processor_path = processor_path
+        self.cache = []
+        self._push = push(self.cache)
+        self.checker = pop_from(cache=self.cache)
+        self._parameters = []
+        self._ctx, self._client, self._processor = None, None, None
+
+    def _set_parameters(self, parameters: Collection[str]):
+        self._parameters = list(parameters)
+        if self._ctx is None:
+            if self._mock is True:
+                self._ctx = MockContext()
+                self._client = MockYamcsClient(self._ctx)
+            else:
+                # TODO: add an 'unpacker'
+                raise NotImplementedError("have to pass the url etc")
+            self._processor = self._client.get_processor(*self._processor_path)
+        self._subscription = self._processor.create_parameter_subscription(
+            self._parameters, self._push
+        )
+
+    def _get_parameters(self) -> list[str]:
+        return self._parameters
+
+    def _set_mock(self, is_mock: bool):
+        if not isinstance(is_mock, bool):
+            raise DoNotUnderstand("mock must be True or False")
+        if is_mock == self._mock:
+            return
+        self._mock = is_mock
+        # reinit client with specified mockness
+        self.parameters = self._parameters
+
+    def _get_mock(self) -> bool:
+        return self._mock
+
+    def _get_mock_ctx(self) -> MockContext:
+        if self._mock is False:
+            raise ValueError("this property may only be used in mock mode")
+        return self._ctx
+
+    def _set_mock_ctx(self, ctx: MockContext):
+        if self._mock is False:
+            raise ValueError("this property may only be used in mock mode")
+        self._ctx = ctx
+        self._client = MockYamcsClient(self._ctx)
+        self._processor = self._client.get_processor(*self._processor_path)
+        self._subscription = self._processor.create_parameter_subscription(
+            self._parameters, self._push
+        )
+
+    name = "parameter_watch"
+    parameters = property(_get_parameters, _set_parameters)
+    actions: tuple[Actor]
+    mock = property(_get_mock, _set_mock)
+    _mock = False
+    # note that this is intended to be used only under test via direct
+    # assignment within a process, so is not part of the interface
+    mock_context = property(_get_mock_ctx, _set_mock_ctx)
+    interface = ("parameters", "mock")
+
+
+class ImageSensor(ParameterSensor):
+    """
+    simple parameter sensor that distinguishes image publications from other
+    parameter types.
+    """
+
+    actions = (ImageCheck,)
+    name = "image_watch"
+
+
+class LightSensor(ParameterSensor):
+    """
+    more complex parameter sensor that actually formats LightRecords. this is
+    encapsulated in a single Sensor because light state parameter values are
+    published in fast cadence (>1/second) whether or not they change, and we
+    only care to record them when they change. it is less fragile to only hold
+    in-memory state in one place than to have it duplicated between two
+    separate delegates or to bother the Station constantly with pointless
+    parameter publications; also, handling behavior is much simpler than
+    for images.
+    """
+
+    def __init__(self, processor_path=("viper", "realtime")):
+        super().__init__(processor_path)
+        # TODO: we currently have no straightforward way to reinitialize this
+        #  after crash, because the LightRecord table doesn't tell us when
+        #  lights that are currently on came on. will need to use the
+        #  archive.
+        self.light_memory = {k: False for k in luminaire_names.keys()}
+
+    def get_logpath(self) -> Path:
+        return self._logpath
+
+    def set_logpath(self, logpath: Path):
+        self._logpath = Path(logpath)
+
+    name = "light_watch"
+    actions = (LightStateProcessor,)
+    interface = ("parameters", "mock", "logpath")
+    logpath = property(get_logpath, set_logpath)
+    _logpath = None
+
+
 class InsertIntoDatabase(Actor):
     """
     take SQLAlchemy DeclarativeBase objects from a report and insert them
@@ -383,7 +400,6 @@ class InsertIntoDatabase(Actor):
                 session.add(e)
             session.commit()
 
-    # TODO: might want to broaden this.
     actortype = ("completion", "info")
     name = "database"
 
@@ -436,13 +452,14 @@ class NotAnImageParameter(ValueError):
 
 
 def unpack_image_parameter_data(parameter: ParameterValue | Mapping):
+    # make this agnostic to mock or real parameter publications
     if not isinstance(parameter, ParameterValue):
         get = parameter.__getitem__
     else:
         get = parameter.__getattribute__
     if len({"imageHeader", "imageData"} & get("eng_value").keys()) != 2:
         raise NotAnImageParameter
-    d = (
+    parameter_dict = (
         {
             "yamcs_name": get("name"),
             "yamcs_generation_time": get("generation_time"),
@@ -451,151 +468,147 @@ def unpack_image_parameter_data(parameter: ParameterValue | Mapping):
         | temp_hardcoded_header_values()
     )
     if isinstance(parameter, dict):
-        # allows us to explicitly manipulate RawProduct constructors
-        d |= itemfilter(
+        # allows us to explicitly manipulate ImageRecord constructors
+        parameter_dict |= itemfilter(
             lambda kv: kv[0] not in ("eng_value", "raw_value"), parameter
         )
-    for k, v in d.items():
+    for k, v in parameter_dict.items():
         if not isinstance(v, str):
             continue
-        if re.match(r"20\d\d-\d\d-", v):
-            d[k] = dateutil.parser.parse(
+        # parse dates expressed as strings into tz-aware dt.datetimes
+        if isinstance(v, str) and re.match(r"20\d\d-\d\d-", v):
+            parameter_dict[k] = dateutil.parser.parse(
                 v, ignoretz=True
             ).replace(tzinfo=dt.timezone.utc)
-            # d[k] = str(
-            #     dateutil.parser.parse(v).replace(tzinfo=dateutil.tz.UTC)
-            # )
-    # load image
     with BytesIO(get("eng_value")["imageData"]) as f:
-        im = imread(f)
+        image: np.ndarray = imread(f)
     # filter parameters that can cause undefined behavior in ImageRecord
-    for badkey in ('generation_time', 'reception_time'):
-        d.pop(badkey, None)
-    return d, im
+    for badkey in ("generation_time", "reception_time"):
+        parameter_dict.pop(badkey, None)
+    return parameter_dict, image
 
 
-class ArchiveSensor(Sensor):
-    """
-    construct an (optionally mock) yamcs client and use it to
-    query a yamcs archive periodically.
-    """
-
-    def __init__(self):
-        raise NotImplementedError("unfinished, do not use")
-        super().__init__()
-        self._client, self._archive = None, None
-        self._parameter_history = {}
-        self.last_time = None
-
-    def _yamcs_setup(self, reset=False):
-        if (self._archive is not None) and (reset is False):
-            return
-        if (self._mock is True) and (self.server is None):
-            raise ValueError(
-                "mock_server must be set to use this sensor in mock mode"
-            )
-        elif self.mock is True:
-            self._client = MockYamcsClient(server=self.server)
-            self._archive = self._client.get_archive(self.instance)
-        else:
-            # TODO: add an 'unpacker'
-            raise NotImplementedError("have to pass the url etc")
-
-    def checker(self, _):
-        # TODO, maybe: this convoluted time tracking thing may not be totally
-        #  necessary, pending clarification
-        self._yamcs_setup()
-        results = []
-        # TODO, maybe: only really need to check this on init, and _could_
-        #  just start from right now, but...
-        if not set(self.parameters).issubset(
-            self.parameter_history.keys()
-        ):
-            raise ValueError(
-                "Incomplete parameter history, refusing to query from "
-                "beginning of time"
-            )
-        if (self.offset.seconds != 0) and (self.mock is False):
-            raise ValueError(
-                "Time offset may not be set unless running in mock mode"
-            )
-        for parameter in self.parameters:
-            new_values = self._archive.list_parameter_values(
-                parameter,
-                start=self.parameter_history[parameter]
-            )
-            results += new_values
-            if len(new_values) > 0:
-                self.last_time[parameter] = max(
-                    v['generation_time'] for v in new_values
-                )
-        return None,
-
-    def _set_parameters(self, parameters: Collection[str]):
-        self._parameters = list(parameters)
-        self._processor = self._client.get_processor(*self._processor_path)
-        # TODO, maybe: something to remove / reset parameter subscriptions
-        self._subscription = self._processor.create_parameter_subscription(
-            self._parameters, self._push
-        )
-
-    def _get_parameters(self) -> list[str]:
-        return self._parameters
-
-    def _set_mock(self, is_mock: bool):
-        if not isinstance(is_mock, bool):
-            raise DoNotUnderstand("mock must be True or False")
-        if is_mock == self._mock:
-            return
-        self._mock = is_mock
-        # if already initialized, reinitialize with specified mockness
-        if self._archive is not None:
-            self._yamcs_setup(True)
-
-    def _get_mock(self) -> bool:
-        return self._mock
-
-    def _get_mock_server(self) -> Optional[MockServer]:
-        return self._mock_server
-
-    def _set_mock_server(self, server: MockServer):
-        already_had_server = self._mock_server is not None
-        self._mock_server = server
-        if already_had_server:
-            self._yamcs_setup(True)  # otherwise just do it lazily
-
-    def _get_poll(self):
-        return self._poll
-
-    def _set_poll(self, poll: float):
-        self._poll = poll
-
-    def _get_parameter_history(self):
-        return self._parameter_history
-
-    def _set_parameter_history(self, history: Mapping):
-        self._parameter_history = self._parameter_history | history
-
-    def _set_offset(self, offset: dt.timedelta):
-        self._offset = offset
-
-    def _get_offset(self) -> dt.timedelta:
-        return self._offset
-
-    name = "parameter_watch"
-    parameters = property(_get_parameters, _set_parameters)
-    parameter_history = property(
-        _get_parameter_history, _set_parameter_history
-    )
-    actions = (ImageCheck, DBCheck)
-    mock = property(_get_mock, _set_mock)
-    _mock = False
-    _yamcs_url = None
-    poll = property(_get_poll, _set_poll)
-    _poll = 5
-    mock_server = property(_get_mock_server, _set_mock_server)
-    _mock_server = None
-    offset = property(_get_offset, _set_offset)
-    _offset = dt.timedelta(seconds=0)
-    instance = "viper"
-    interface = ("parameters", "mock", "offset", "mock_server")
+# class ArchiveSensor(Sensor):
+#     """
+#     construct an (optionally mock) yamcs client and use it to
+#     query a yamcs archive periodically.
+#     """
+#
+#     def __init__(self):
+#         raise NotImplementedError("unfinished, do not use")
+#         super().__init__()
+#         self._client, self._archive = None, None
+#         self._parameter_history = {}
+#         self.last_time = None
+#
+#     def _yamcs_setup(self, reset=False):
+#         if (self._archive is not None) and (reset is False):
+#             return
+#         if (self._mock is True) and (self.server is None):
+#             raise ValueError(
+#                 "mock_server must be set to use this sensor in mock mode"
+#             )
+#         elif self.mock is True:
+#             self._client = MockYamcsClient(server=self.server)
+#             self._archive = self._client.get_archive(self.instance)
+#         else:
+#             raise NotImplementedError("have to pass the url etc")
+#
+#     def checker(self, _):
+#         # TODO, maybe: this convoluted time tracking thing may not be totally
+#         #  necessary, pending clarification
+#         self._yamcs_setup()
+#         results = []
+#         # TODO, maybe: only really need to check this on init, and _could_
+#         #  just start from right now, but...
+#         if not set(self.parameters).issubset(
+#             self.parameter_history.keys()
+#         ):
+#             raise ValueError(
+#                 "Incomplete parameter history, refusing to query from "
+#                 "beginning of time"
+#             )
+#         if (self.offset.seconds != 0) and (self.mock is False):
+#             raise ValueError(
+#                 "Time offset may not be set unless running in mock mode"
+#             )
+#         for parameter in self.parameters:
+#             new_values = self._archive.list_parameter_values(
+#                 parameter,
+#                 start=self.parameter_history[parameter]
+#             )
+#             results += new_values
+#             if len(new_values) > 0:
+#                 self.last_time[parameter] = max(
+#                     v['generation_time'] for v in new_values
+#                 )
+#         return None,
+#
+#     def _set_parameters(self, parameters: Collection[str]):
+#         self._parameters = list(parameters)
+#         self._processor = self._client.get_processor(*self._processor_path)
+#         # TODO, maybe: something to remove / reset parameter subscriptions
+#         self._subscription = self._processor.create_parameter_subscription(
+#             self._parameters, self._push
+#         )
+#
+#     def _get_parameters(self) -> list[str]:
+#         return self._parameters
+#
+#     def _set_mock(self, is_mock: bool):
+#         if not isinstance(is_mock, bool):
+#             raise DoNotUnderstand("mock must be True or False")
+#         if is_mock == self._mock:
+#             return
+#         self._mock = is_mock
+#         # if already initialized, reinitialize with specified mockness
+#         if self._archive is not None:
+#             self._yamcs_setup(True)
+#
+#     def _get_mock(self) -> bool:
+#         return self._mock
+#
+#     def _get_mock_server(self) -> Optional[MockServer]:
+#         return self._mock_server
+#
+#     def _set_mock_server(self, server: MockServer):
+#         already_had_server = self._mock_server is not None
+#         self._mock_server = server
+#         if already_had_server:
+#             self._yamcs_setup(True)  # otherwise just do it lazily
+#
+#     def _get_poll(self):
+#         return self._poll
+#
+#     def _set_poll(self, poll: float):
+#         self._poll = poll
+#
+#     def _get_parameter_history(self):
+#         return self._parameter_history
+#
+#     def _set_parameter_history(self, history: Mapping):
+#         self._parameter_history = self._parameter_history | history
+#
+#     def _set_offset(self, offset: dt.timedelta):
+#         self._offset = offset
+#
+#     def _get_offset(self) -> dt.timedelta:
+#         return self._offset
+#
+#     name = "parameter_watch"
+#     parameters = property(_get_parameters, _set_parameters)
+#     parameter_history = property(
+#         _get_parameter_history, _set_parameter_history
+#     )
+#     actions = (ImageCheck, DBCheck)
+#     mock = property(_get_mock, _set_mock)
+#     _mock = False
+#     _yamcs_url = None
+#     poll = property(_get_poll, _set_poll)
+#     _poll = 5
+#     mock_server = property(_get_mock_server, _set_mock_server)
+#     _mock_server = None
+#     offset = property(_get_offset, _set_offset)
+#     _offset = dt.timedelta(seconds=0)
+#     instance = "viper"
+#     interface = ("parameters", "mock", "offset", "mock_server")

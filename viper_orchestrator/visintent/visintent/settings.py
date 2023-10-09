@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from viper_orchestrator.config import MEDIA_ROOT
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # TODO: unsuitable for production
@@ -92,11 +94,9 @@ USE_TZ = True
 #  only.
 # TODO, alternatively: we may need to interact with a preexisting Apache server
 #  or something in some way, so don't make this decision as of yet.
-MEDIA_ROOT = Path(__file__).parent.parent.parent / "media"
 MEDIA_URL = "media/"
 STATICFILES_DIRS = [Path(BASE_DIR) / "static_dev"]
 STATIC_ROOT = Path(BASE_DIR) / "static_pro"
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-MEDIA_ROOT.mkdir(exist_ok=True)

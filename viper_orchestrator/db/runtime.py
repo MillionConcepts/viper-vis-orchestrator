@@ -15,7 +15,7 @@ from hostess.subutils import Viewer
 from sqlalchemy import create_engine, select, insert
 from sqlalchemy.orm import Session
 
-from viper_orchestrator.db.config import BASES, TEST, TEST_DB_PATH
+from viper_orchestrator.config import BASES, TEST, TEST_DB_PATH
 from vipersci.vis.db.image_tags import ImageTag, taglist
 
 # lists defining managed processes that we will, respectively, clean up and
