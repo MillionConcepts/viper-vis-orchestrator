@@ -1,6 +1,7 @@
 import datetime as dt
 import re
 from abc import ABC
+from collections import deque
 
 import dateutil.parser
 import dateutil.tz
@@ -44,7 +45,7 @@ from hostess.station.messages import (
 )
 from hostess.station.proto import station_pb2 as pro
 from hostess.utilities import curry
-from viper_orchestrator.utilities import stringify_timedict
+from viper_orchestrator.timeutils import stringify_timedict
 from vipersci.pds.pid import VISID
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_stats import ImageStats
@@ -78,7 +79,7 @@ def process_image_instruction(note) -> pro.Action:
         note["data"]["eng_value"]["imageHeader"]["cameraId"]
     )
     timestamp = dt.datetime.fromtimestamp(
-        note["data"]["eng_value"]["imageHeader"]["lobt"], tz=dt.timezone.utc
+        note["data"]["eng_value"]["imageHeader"]["lobt"], tz=dt.UTC
     )
     action = make_action(
         name="process_image",
@@ -103,9 +104,12 @@ def thumbnail_instruction(note):
     return make_instruction("do", action=action)
 
 
-def pop(cache: MutableSequence) -> list:
-    """pop everything from a sequence and return it in a list"""
-    return [cache.pop() for _ in cache]
+def popleft(cache: deque) -> deque:
+    """pop everything from a sequence and return it in a deque"""
+    output = deque()
+    while len(cache) > 0:
+        output.append(cache.popleft())
+    return output
 
 
 @curry
@@ -116,12 +120,12 @@ def push(cache: MutableSequence, obj: Any):
 
 @curry
 def pop_from(
-    _, *, cache: Optional[MutableSequence] = None, **__
-) -> tuple[None, list]:
+    _, *, cache: Optional[deque] = None, **__
+) -> tuple[None, deque]:
     """curried pop-from-cache function"""
     if cache is None:
-        return None, []
-    return None, pop(cache)
+        return None, deque()
+    return None, popleft(cache)
 
 
 def validate_pdict(pdict: Mapping):
@@ -174,37 +178,45 @@ class LightStateProcessor(Actor):
         return True
 
     def execute(self, node: Node, light_pv: dict, **_):
-        columns = ("generation_time",) + tuple(luminaire_names.keys())
-        gentime = light_pv["generation_time"].replace(tzinfo=dt.timezone.utc)
+        if self.owner.lightmem is None:
+            return
+        gentime = light_pv["generation_time"].astimezone(dt.UTC)
         lights = light_pv["eng_value"]
-        state, switch_on, switch_off = self.owner.memory.copy(), [], []
+        state, switch_on, switch_off = self.owner.lightmem.copy(), [], []
         state["generation_time"] = gentime
         for light in luminaire_names.keys():
             measured = lights[light]["measuredState"]
-            if measured == "OFF" and self.owner.memory[light] is not False:
+            if measured == "OFF" and self.owner.lightmem[light] is not False:
                 switch_off.append(light)
                 state[light] = False
-            elif measured == "ON" and self.owner.memory[light] is False:
+            elif measured == "ON" and self.owner.lightmem[light] is False:
                 switch_on.append(light)
                 state[light] = gentime
+        if self.owner.lightmem.get('generation_time') is not None:
+            try:
+                assert (
+                    gentime - self.owner.lightmem['generation_time']
+                ).total_seconds() > 0
+            except AssertionError:
+                print('bad!!!!!')
+        columns = ("generation_time",) + tuple(luminaire_names.keys())
         if len(switch_on) + len(switch_off) > 0:
             if self.owner.logpath is not None:
                 with self.owner.logpath.open("a") as stream:
                     dump = stringify_timedict(state)
                     stream.write(f"{','.join(dump[c] for c in columns)}\n")
-        self.owner.memory = state
         # note that we only write a record for a light _when it turns off_
-        if len(switch_off) == 0:
-            return
         recs = []
         for light in switch_off:
             rec = LightRecord(
                 name=light,
-                start_time=self.owner.memory[light],
-                last_time=self.owner.memory["generation_time"],
+                start_time=self.owner.lightmem[light],
+                last_time=self.owner.lightmem["generation_time"],
             )
             recs.append(rec)
-        node.add_actionable_event(recs, "made_light_records")
+        self.owner.lightmem = state
+        if len(recs) > 0:
+            node.add_actionable_event(recs, "made_light_records")
 
     name = "light_state_processor"
 
@@ -275,7 +287,7 @@ class ParameterSensor(Sensor, ABC):
     def __init__(self, processor_path=("viper", "realtime")):
         super().__init__()
         self._processor_path = processor_path
-        self.cache = []
+        self.cache = deque()
         self._push = push(self.cache)
         self.checker = pop_from(cache=self.cache)
         self._parameters = []
@@ -318,12 +330,17 @@ class ParameterSensor(Sensor, ABC):
     def _set_mock_ctx(self, ctx: MockContext):
         if self._mock is False:
             raise ValueError("this property may only be used in mock mode")
+        self._ctx.kill()
         self._ctx = ctx
         self._client = MockYamcsClient(self._ctx)
         self._processor = self._client.get_processor(*self._processor_path)
         self._subscription = self._processor.create_parameter_subscription(
             self._parameters, self._push
         )
+
+    def close(self):
+        if self._mock is True:
+            self._ctx.kill()
 
     name = "parameter_watch"
     parameters = property(_get_parameters, _set_parameters)
@@ -364,13 +381,17 @@ class LightSensor(ParameterSensor):
         #  after crash, because the LightRecord table doesn't tell us when
         #  lights that are currently on came on. will need to use the
         #  archive.
-        self.light_memory = {k: False for k in luminaire_names.keys()}
+        self.lightmem = {k: False for k in luminaire_names.keys()}
 
     def get_logpath(self) -> Path:
         return self._logpath
 
     def set_logpath(self, logpath: Path):
         self._logpath = Path(logpath)
+        if not self.logpath.exists():
+            columns = ("generation_time",) + tuple(luminaire_names.keys())
+            with self.logpath.open('w') as stream:
+                stream.write(f"{','.join(columns)}\n")
 
     name = "light_watch"
     actions = (LightStateProcessor,)
@@ -472,14 +493,13 @@ def unpack_image_parameter_data(parameter: ParameterValue | Mapping):
         parameter_dict |= itemfilter(
             lambda kv: kv[0] not in ("eng_value", "raw_value"), parameter
         )
+    # parse dates expressed as strings into tz-aware dt.datetimes
     for k, v in parameter_dict.items():
         if not isinstance(v, str):
             continue
         # parse dates expressed as strings into tz-aware dt.datetimes
         if isinstance(v, str) and re.match(r"20\d\d-\d\d-", v):
-            parameter_dict[k] = dateutil.parser.parse(
-                v, ignoretz=True
-            ).replace(tzinfo=dt.timezone.utc)
+            parameter_dict[k] = dateutil.parser.parse(v).astimezone(dt.UTC)
     with BytesIO(get("eng_value")["imageData"]) as f:
         image: np.ndarray = imread(f)
     # filter parameters that can cause undefined behavior in ImageRecord

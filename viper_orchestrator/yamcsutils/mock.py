@@ -1,11 +1,12 @@
 import datetime as dt
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from itertools import count
 from pathlib import Path
 from random import shuffle
-from typing import Literal, Any, Optional, Collection, Iterator, Callable
+from typing import Literal, Any, Optional, Collection, Iterator, Callable, \
+    Mapping, Hashable
 
 import pandas as pd
 from cytoolz import get_in
@@ -17,15 +18,21 @@ from viper_orchestrator.yamcsutils.parameter_record_helpers import (
 )
 
 
-def _poll_ctx(cache, parameters, on_data, delay, signals, thread_id):
+def _poll_ctx(
+    cache: Mapping[str, deque],
+    parameters: Collection[str],
+    on_data: Callable,
+    delay: float,
+    signals: Mapping[Hashable, int],
+    thread_id: Hashable
+):
     """poll a cache representing a yamcs server websocket."""
     while True:
         if signals[thread_id] != 0:
             return
         for param in parameters:
             while len(cache[param]) > 0:
-                event = cache[param].pop()
-                on_data(event)
+                on_data(cache[param].popleft())
         time.sleep(delay)
 
 
@@ -66,7 +73,7 @@ class MockServer:
             if self.mode in ("replacement", "no_replacement"):
                 shuffle(self._pickable_indices)
             if self.mode in ("no_replacement", "sequential"):
-                ix = self._pickable_indices.pop()
+                ix = self._pickable_indices.popleft()
             else:
                 ix = self._pickable_indices[0]
         try:
@@ -97,7 +104,7 @@ class MockServer:
             self._pickable = self.source.loc[
                 self.source["name"].isin(self._parameters)
             ]
-        self._pickable_indices = list(reversed(self._pickable.index))
+        self._pickable_indices = deque(self._pickable.index)
         self._pdict = self._pickable.to_dict('index')
 
     def _get_parameters(self):
@@ -130,7 +137,9 @@ class MockServer:
         return dig_and_edit(
             event,
             filter_func=lambda _, v: isinstance(v, pd.Timestamp),
-            setter_func=lambda _, v: v.to_pydatetime(),
+            setter_func=lambda _, v: v.to_pydatetime().astimezone(
+                dt.timezone.utc
+            ),
             mtypes=(dict, NestingDict)
         )
 
@@ -216,7 +225,7 @@ class MockContext:
     def __init__(self, cache=None, n_threads=4):
         self.exec = ThreadPoolExecutor(n_threads)
         if cache is None:
-            self.cache = defaultdict(list)
+            self.cache = defaultdict(deque)
         self._signals = {}
         self._counter = count()
 

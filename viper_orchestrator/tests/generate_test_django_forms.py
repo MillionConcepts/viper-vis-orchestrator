@@ -148,17 +148,21 @@ make_random_pl_submission(lossies[2].product_id)
 
 # start the Station up and create a lossless version of that product
 station = vsd.create_station()
+station.start()
 try:
     vsd.launch_delegates(station)
-    station.start()
     time.sleep(0.5)  # let config propagate
-    server = make_mock_server(station.get_delegate("watcher")["obj"])
-    ix = server.source.loc[
-        server.source["eng_value_imageHeader_lobt"] == lossy0.lobt
+    SERVER = make_mock_server(
+        station.get_delegate(
+            "image_watcher"
+        )["obj"].sensors['image_watch']._ctx
+    )
+    ix = SERVER.source.loc[
+        SERVER.source["eng_value_imageHeader_lobt"] == lossy0.lobt
     ].index[0]
     # TODO: place get-one-event function on Sensor in mock mode in order to be
     #  able to replicate this in mock archive mode
-    server.serve_to_ctx(ix, **LOSSLESS_KWARGS)
+    SERVER.serve_to_ctx(ix, **LOSSLESS_KWARGS)
     time.sleep(2)  # wait a healthy beat for product creation
     assert ProtectedListEntry.from_pid(lossy0.product_id).has_lossless is True
     print(
@@ -167,10 +171,10 @@ try:
     )
     # make a different lossless product
     lossy3 = lossies[3]
-    ix = server.source.loc[
-        server.source["eng_value_imageHeader_lobt"] == lossy3.lobt
+    ix = SERVER.source.loc[
+        SERVER.source["eng_value_imageHeader_lobt"] == lossy3.lobt
     ].index[0]
-    server.serve_to_ctx(ix, **LOSSLESS_KWARGS)
+    SERVER.serve_to_ctx(ix, **LOSSLESS_KWARGS)
     time.sleep(2)  # wait a healthy beat for product creation
     # ensure user-facing functionality will refuse to create a new
     # protected list request for this already-existing lossless product
@@ -184,7 +188,7 @@ try:
     make_random_pl_submission(lossy4.product_id)
     # serve an image that would have "superseded" it (i.e., overwrote in CCU)
     # NOTE: will usually throw a harmless warning due to mismatched camera id
-    server.serve_to_ctx(
+    SERVER.serve_to_ctx(
         ix,
         **LOSSLESS_KWARGS,
         instrument_name=lossy4.instrument_name,
@@ -197,5 +201,8 @@ try:
 
 finally:
     station.shutdown()
-    server.ctx.kill()
+    try:
+        SERVER.ctx.kill()
+    except NameError:
+        pass
     print("shut down station and mock YAMCS server")

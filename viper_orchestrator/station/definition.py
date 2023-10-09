@@ -1,20 +1,20 @@
 from pathlib import Path
 import random
 
+from hostess.station.actors import InstructionFromInfo
+from hostess.station.station import Station
 from viper_orchestrator.config import (
     DATA_ROOT,
     PARAMETERS,
     LIGHT_LOGPATH,
     STATION_LOG_ROOT,
 )
-from hostess.station.actors import InstructionFromInfo
-from hostess.station.station import Station
-
 from viper_orchestrator.station.actors import (
     InsertIntoDatabase,
-    thumbnail_instruction,
     process_image_instruction,
+    thumbnail_instruction,
 )
+
 
 # basic settings for delegates in this application
 DELKWARGS = {"update_interval": 0.1, "context": "local", "n_threads": 4}

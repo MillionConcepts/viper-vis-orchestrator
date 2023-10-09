@@ -37,7 +37,7 @@ def unpack_pickled_parameters(pickle_file: Union[str, Path]) -> pd.DataFrame:
     if not isinstance(records, list):
         cache = []
         for rec in records:
-            cache += rec.pop("cache")
+            cache += rec.popleft("cache")
     else:
         cache = records
     del records

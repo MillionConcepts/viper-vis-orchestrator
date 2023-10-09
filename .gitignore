@@ -168,6 +168,8 @@ viper_orchestrator/media/
 *.npy
 build_9*/
 *.pkl
+*/postgres
+/media
 
 # application logs
 logs/
