@@ -122,4 +122,5 @@ try:
     print("light records created successfully")
 finally:
     station.shutdown()
+    print("application shut down successfully")
     SERVER.ctx.kill()
