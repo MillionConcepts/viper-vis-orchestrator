@@ -42,8 +42,6 @@ BASES = [
 TEST_DB_PATH = (Path(__file__).parent / 'postgres').absolute()
 TEST = True
 
-# where are we writing our scratch products? should match MEDIA_ROOT in
-# visintent.visintent.settings
 # TODO: add prod paths based on gunicorn/nginx/docker config
 MEDIA_ROOT = Path(__file__).parent.parent / "media"
 PRODUCT_ROOT = MEDIA_ROOT / "products"

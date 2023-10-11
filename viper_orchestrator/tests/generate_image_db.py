@@ -63,17 +63,19 @@ station.start()
 vsd.launch_delegates(station)
 # give delegate configuration a moment to propagate
 time.sleep(0.6)
-# make the image and light state watchers share a mock context (fake websocket)
+# make a shared mock context (fake websocket) for the mock yamcs server,
+# image watcher, and light watcher
 ctx = MockContext()
-image_watcher = station.get_delegate("image_watcher")['obj']
-light_watcher = station.get_delegate("light_watcher")['obj']
-image_watcher.sensors['image_watch'].mock_context = ctx
-light_watcher.sensors['light_watch'].mock_context = ctx
 # create a mock YAMCS server attached to that shared context
 print("initializing mock YAMCS server")
 SERVER = make_mock_server(ctx)
 
 try:
+    # attach context to delegates
+    image_watcher = station.get_delegate("image_watcher")['obj']
+    light_watcher = station.get_delegate("light_watcher")['obj']
+    image_watcher.sensors['image_watch'].mock_context = ctx
+    light_watcher.sensors['light_watch'].mock_context = ctx
     # send some mock image publications
     MAX_PRODUCTS = 40
     SERVER.parameters = [p for p in PARAMETERS if "Images" in p]
@@ -87,7 +89,9 @@ try:
     print("spooling mock light state publications...", end="\n")
     SERVER.parameters = [p for p in PARAMETERS if "Light" in p]
     n_states, n_recs = serve_light_states(SERVER)
-    print(f"spooled {n_states} light states ({n_recs} LightRecords)")
+    print(
+        f"spooled {n_states} light states (representing {n_recs} LightRecords)"
+    )
 
     def n_incomplete():
         return len(

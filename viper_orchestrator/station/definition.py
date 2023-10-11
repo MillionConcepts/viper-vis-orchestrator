@@ -17,7 +17,7 @@ from viper_orchestrator.station.actors import (
 
 
 # basic settings for delegates in this application
-DELKWARGS = {"update_interval": 0.1, "context": "local", "n_threads": 4}
+DELKWARGS = {"update_interval": 0.5, "context": "local", "n_threads": 4}
 
 
 def create_station():
@@ -47,10 +47,15 @@ def create_station():
     return station
 
 
-def launch_delegates(station):
+def launch_delegates(
+    station: Station,
+    mock: bool = False,
+    processor_path: tuple[str, str] = ("viper", "realtime"),
+    yamcs_url="localhost:8090"
+) -> None:
     """defines, launches, and queues config instructions for delegates"""
     thumbnail_watch_launch_spec = {
-        # add a directory-watching Sensor
+        # sensor that watches a directory on the filesystem
         "elements": [("hostess.station.actors", "DirWatch")],
     }
     thumbnail_watch_config_spec = {
@@ -59,7 +64,8 @@ def launch_delegates(station):
         # what filename patterns are we watching for?
         "dirwatch_patterns": (r".*\.tif",),
     }
-    # thumbnail-making delegate
+    # thumbnail making is handled by a generic Actor that calls plain
+    # functions; the details are specified in Instructions from the Station
     thumbnail_launch_spec = {
         "elements": [("hostess.station.actors", "FuncCaller")]
     }
@@ -69,15 +75,21 @@ def launch_delegates(station):
         elements=(("viper_orchestrator.station.actors", "ImageProcessor"),),
         **DELKWARGS,
     )
-    # note that to work correctly in mock mode, the parameter-watching
-    # delegates should always be local context so that they can interact with
-    # the locally-instantiated MockServer.
-
+    # to work correctly in mock mode, the parameter-watching delegates must
+    # always be in local context so that they can interact with the
+    # locally-instantiated MockServer. execution context doesn't matter if
+    # they're connecting to a real yamcs server.
+    # also note that the server url and processor path are harmlessly ignored
+    # in mock mode.
+    if mock is True:
+        subscriber_kwargs = DELKWARGS | {'context': 'local'}
+    else:
+        subscriber_kwargs = DELKWARGS
     # image parameter-watching delegate.
     station.launch_delegate(
         "image_watcher",
         elements=(("viper_orchestrator.station.actors", "ImageSensor"),),
-        **DELKWARGS | {"context": "local"},
+        **subscriber_kwargs
     )
     # light state parameter-watching and handling delegate.
     # unlike images, we encapsulate handling for these parameters in a single
@@ -86,28 +98,37 @@ def launch_delegates(station):
     station.launch_delegate(
         "light_watcher",
         elements=(("viper_orchestrator.station.actors", "LightSensor"),),
-        **DELKWARGS | {"context": "local"},
+        **subscriber_kwargs
     )
-    # tiff-write-watching delegate
+    # tiff-write-watching delegate. this watches the filesystem for writes
+    # performed in the create_image.create() workflow, not yamcs.
     station.launch_delegate(
         "thumbnail_watcher", **thumbnail_watch_launch_spec, **DELKWARGS
     )
+    # thumbnail-making delegate
     station.launch_delegate("thumbnail", **thumbnail_launch_spec, **DELKWARGS)
     # delegate configuration
     station.set_delegate_properties(
         "image_watcher",
-        image_watch_mock=True,
+        image_watch_mock=mock,
         image_watch_parameters=[p for p in PARAMETERS if "Images" in p],
+        image_watch_processor_path=processor_path,
+        image_watch_url=yamcs_url
     )
     station.set_delegate_properties(
         "light_watcher",
-        light_watch_mock=True,
+        light_watch_mock=mock,
         light_watch_parameters=[p for p in PARAMETERS if "Light" in p],
+        image_watch_processor_path=processor_path,
+        image_watch_url=yamcs_url,
+        # the light watcher manages its own on-disk backup event log,
+        # analogous to the json labels produced in create_image.create()
         light_watch_logpath=LIGHT_LOGPATH,
     )
     station.set_delegate_properties(
         "image_processor", image_processor_outdir=DATA_ROOT
     )
+    #
     station.set_delegate_properties(
         "thumbnail_watcher", **thumbnail_watch_config_spec
     )

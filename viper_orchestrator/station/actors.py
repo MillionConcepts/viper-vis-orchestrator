@@ -27,6 +27,8 @@ from typing import (
     Mapping,
 )
 
+from yamcs.client import YamcsClient
+
 from viper_orchestrator.config import BROWSE_ROOT
 from hostess.station.actors import reported
 from hostess.station.bases import (
@@ -284,28 +286,44 @@ class ParameterSensor(Sensor, ABC):
     for new values of specified parameters.
     """
 
-    def __init__(self, processor_path=("viper", "realtime")):
+    def __init__(self):
         super().__init__()
-        self._processor_path = processor_path
         self.cache = deque()
         self._push = push(self.cache)
         self.checker = pop_from(cache=self.cache)
         self._parameters = []
         self._ctx, self._client, self._processor = None, None, None
+        self._initialization_status = "uninitialized"
 
-    def _set_parameters(self, parameters: Collection[str]):
-        self._parameters = list(parameters)
-        if self._ctx is None:
-            if self._mock is True:
-                self._ctx = MockContext()
-                self._client = MockYamcsClient(self._ctx)
-            else:
-                # TODO: add an 'unpacker'
-                raise NotImplementedError("have to pass the url etc")
-            self._processor = self._client.get_processor(*self._processor_path)
+    def _init_subscription(self):
+        """try to (re) nitialize the subscription."""
+        for name in ("_client", "_processor", "parameters"):
+            attr = getattr(self, name)
+            if (attr is None) or (isinstance(attr, list) and len(attr) == 0):
+                self._initialization_status = f"need {name.strip('_')}"
+                return
         self._subscription = self._processor.create_parameter_subscription(
             self._parameters, self._push
         )
+
+    def _init_client(self):
+        """try to (re)initialize the client."""
+        if self._mock is True:
+            if self._ctx is None:
+                self._ctx = MockContext()
+            self._client = MockYamcsClient(self._ctx)
+        elif self.url is None:
+            self._initialization_status = "need server url"
+        else:
+            self._client = YamcsClient(self.url)
+        if self.processor_path is None:
+            self._initialization_status = "need processor path"
+        self._processor = self._client.get_processor(*self.processor_path)
+        self._init_subscription()
+
+    def _set_parameters(self, parameters: Collection[str]):
+        self._parameters = list(parameters)
+        self._init_subscription()
 
     def _get_parameters(self) -> list[str]:
         return self._parameters
@@ -317,7 +335,7 @@ class ParameterSensor(Sensor, ABC):
             return
         self._mock = is_mock
         # reinit client with specified mockness
-        self.parameters = self._parameters
+        self._init_client()
 
     def _get_mock(self) -> bool:
         return self._mock
@@ -332,15 +350,40 @@ class ParameterSensor(Sensor, ABC):
             raise ValueError("this property may only be used in mock mode")
         self._ctx.kill()
         self._ctx = ctx
-        self._client = MockYamcsClient(self._ctx)
-        self._processor = self._client.get_processor(*self._processor_path)
-        self._subscription = self._processor.create_parameter_subscription(
-            self._parameters, self._push
-        )
+        self._init_client()
 
     def close(self):
         if self._mock is True:
             self._ctx.kill()
+
+    def _get_url(self) -> Optional[str]:
+        return self._url
+
+    def _set_url(self, url: str):
+        if self._url == url:
+            return
+        self._url = url
+        # we permit setting a url in mock mode, but it doesn't do anything.
+        if self.mock is False:
+            self._init_client()
+
+    def _get_processor_path(self) -> tuple[str, str]:
+        return self._processor_path
+
+    def _set_processor_path(self, path: tuple[str, str]):
+        if self._processor_path == path:
+            return
+        self._processor_path = path
+        self._init_client()
+
+    @property
+    def initialization_status(self) -> str:
+        """
+        part of the interface, but cannot be assigned -- simply intended to
+        allow flexible initialization order while still giving feedback to the
+        Station about errors.
+        """
+        return self._initialization_status
 
     name = "parameter_watch"
     parameters = property(_get_parameters, _set_parameters)
@@ -348,9 +391,15 @@ class ParameterSensor(Sensor, ABC):
     mock = property(_get_mock, _set_mock)
     _mock = False
     # note that this is intended to be used only under test via direct
-    # assignment within a process, so is not part of the interface
+    # assignment within a process, so it is not part of the interface
     mock_context = property(_get_mock_ctx, _set_mock_ctx)
-    interface = ("parameters", "mock")
+    url = property(_get_url, _set_url)
+    _url = None
+    processor_path = property(_get_processor_path, _set_processor_path)
+    _processor_path = ("viper", "realtime")
+    interface = (
+        "parameters", "mock", "processor_path", "url", "initialization_status"
+    )
 
 
 class ImageSensor(ParameterSensor):
@@ -375,8 +424,8 @@ class LightSensor(ParameterSensor):
     for images.
     """
 
-    def __init__(self, processor_path=("viper", "realtime")):
-        super().__init__(processor_path)
+    def __init__(self):
+        super().__init__()
         # TODO: we currently have no straightforward way to reinitialize this
         #  after crash, because the LightRecord table doesn't tell us when
         #  lights that are currently on came on. will need to use the
