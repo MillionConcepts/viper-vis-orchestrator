@@ -6,37 +6,25 @@ intended for use as a database connection.
 """
 import atexit
 import re
-import shutil
-import time
-from functools import partial
 from pathlib import Path
 
 from sqlalchemy import create_engine, select, insert
 from sqlalchemy.orm import Session
 
 from hostess.subutils import Viewer
-from viper_orchestrator.config import BASES, TEST, TEST_DB_PATH, DB_PATH
+from hostess.utilities import timeout_factory
+from viper_orchestrator.config import BASES, DB_PATH
 from vipersci.vis.db.image_tags import ImageTag, taglist
 
-# managed processes that we will clean up on interpreter exit
-KILL_TARGETS = []
+MANAGED_PROCESSES = []
 
 
-def listkiller(processes: list[Viewer]):
-    if len(processes) > 0:
-        print('killing managed processes on exit...')
-    while len(processes) > 0:
-        viewer = processes.pop()
-        print(f"killing PID {viewer.pid} ({viewer.command})...", end="")
-        viewer.kill()
-        viewer.wait()
-        print(f"killed")
+def shut_down_postgres():
+    shutdown = Viewer.from_command("pg_ctl", "stop", D=DB_PATH)
+    shutdown.wait()
 
 
-atexit.register(partial(listkiller, KILL_TARGETS))
-
-
-class PostgresInitError(OSError):
+class PostgresServerError(OSError):
     pass
 
 
@@ -50,24 +38,62 @@ SPATIAL_REF_VALUES = f"( 910101, 'ROVER', 910101, '+proj=stere +lat_0={LAT_0} +l
 INIT_COMMANDS = (
     f"initdb -D {DB_PATH}",
     f"postgres -D {DB_PATH}",
-    f'psql -d {DB_PATH.name} -c "CREATE EXTENSION postgis"',
-    f"""psql -d {DB_PATH.name} -c "INSERT into spatial_ref_sys (srid, auth_name, auth_srid, proj4text) values {SPATIAL_REF_VALUES}\"""",
+    f'psql -d postgres -c "CREATE EXTENSION postgis"',
+    f"""psql -d postgres -c "INSERT into spatial_ref_sys (srid, auth_name, auth_srid, proj4text) values {SPATIAL_REF_VALUES}\"""",
 )
 
 
 def construct_postgres_error(viewer, text="postgres server failed init"):
-    return PostgresInitError(
+    return PostgresServerError(
         f"{text}\ncommand {viewer.command} failed:\n\n{','.join(viewer.err)}"
     )
 
 
-def kill_init_and_delete_db_if_test(viewer):
-    viewer.kill()
-    if TEST is True:
-        # this gets called if the database appears mangled...but we still
-        # don't want to autodelete it in prod!
-        print('removing db path')
-        shutil.rmtree(TEST_DB_PATH)
+def run_postgres_command(command, initializing=False):
+    process = Viewer.from_command(command)
+    waiting, _ = timeout_factory(True, 5)
+    while True:
+        try:
+            waiting()
+            try:
+                process.wait_for_output(0.1)
+            except TimeoutError("timed out"):
+                continue
+            if command.startswith("postgres -D"):
+                if "system is ready to accept" in process.err[-1]:
+                    MANAGED_PROCESSES.append(process)
+                    # if we're launching it here, this is the process owner;
+                    # shut down postgres on exit
+                    atexit.register(shut_down_postgres)
+                    return process
+                if re.match(
+                    r'.*FATAL:.*lock file "postmaster', process.err[0]
+                ):
+                    # if it fails with an "another server might be running"
+                    # message and we're _not_ in the initialization workflow,
+                    # assume we already launched it on purpose.
+                    if initializing is True:
+                        raise construct_postgres_error(
+                            process,
+                            'server is already running during initialization; '
+                            'something is wrong'
+                        )
+                    process.kill()
+                    return process
+                elif process.done:
+                    raise PostgresServerError(
+                        f"server stopped unexpectedly (code "
+                        f"{process.returncode()})"
+                    )
+            if process.done and process.returncode() != 0:
+                raise PostgresServerError(f"error {process.returncode()}")
+            elif process.done:
+                return process
+        except (TimeoutError, PostgresServerError) as err:
+            process.kill()
+            raise construct_postgres_error(
+                process, f"server initialization failed ({err})"
+            )
 
 
 # if the database doesn't exist at all, create and configure it
@@ -84,43 +110,22 @@ if not Path(DB_PATH).exists():
             f"write permissions to its parent(s): {pe}"
         )
     for cmd in INIT_COMMANDS:
-        pginit = Viewer.from_command(cmd)
-        if cmd.startswith("postgres -D"):
-            time.sleep(1)  # TODO: replace with explicit connection check
-            if "system is ready to accept connections" not in pginit.err[-1]:
-                kill_init_and_delete_db_if_test(pginit)
-            else:
-                pginit.wait()
-                if pginit.returncode() != 0:
-                    kill_init_and_delete_db_if_test(pginit)
-                    raise construct_postgres_error(
-                        pginit, "server failed launch"
-                    )
+        run_postgres_command(cmd, initializing=True)
+        if cmd.startswith("initdb"):
+            # edit conf file to ensure timezone is set to UTC
+            text = (DB_PATH / "postgresql.conf").open().read()
+            text = re.sub("\ntimezone.*?\n", "\ntimezone = 'UTC'\n", text)
+            with (DB_PATH / "postgresql.conf").open('w') as stream:
+                stream.write(text)
         # if we start the server ourselves, kill it on exit
-        KILL_TARGETS.append(pginit)
-        # edit conf file to ensure timezone is set to UTC
-        text = (DB_PATH / "postgresql.conf").open().read()
-        text = re.sub("\ntimezone.*?\n", "\ntimezone = 'UTC'\n", text)
-        with (DB_PATH / "postgresql.conf").open('w') as stream:
-            stream.write(text)
+        atexit.register(shut_down_postgres)
 # if the database exists, just try to connect to it
 else:
-    # launch it if it's not running
-    pginit = Viewer.from_command(f"postgres -D {DB_PATH}")
-    time.sleep(1)
-    if "system is ready to accept connections" not in pginit.err[-1]:
-        # if it fails with an "another server might be running" message,
-        # assume we already launched it on purpose, nbd
-        if not re.match(r'.*FATAL:.*lock file "postmaster', pginit.err[0]):
-            pginit.kill()
-            raise construct_postgres_error(pginit, 'server failed launch')
-    else:
-        # and if we're launching it here, this is now the process owner,
-        # as above; kill it on exit
-        KILL_TARGETS.append(pginit)
-
+    # TODO: check and make sure time is set to UTC
+    # launch postgres server if it's not running
+    pginit = run_postgres_command(f"postgres -D {DB_PATH}")
 # shared sqlalchemy Engine for application
-ENGINE = create_engine(f"postgresql:///{DB_PATH.name}")
+ENGINE = create_engine(f"postgresql:///postgres")
 
 # initialize tables in case they don't exist (operation is harmless if they do)
 for base in BASES:

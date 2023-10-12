@@ -13,7 +13,7 @@ from vipersci.vis.db.ldst_verification import LDSTVerification
 from vipersci.vis.db.light_records import LightRecord
 
 # are we running in test mode? primarily affects file write behavior
-TEST = True
+TEST = False
 
 # yamcs parameters we know we care about at the moment
 PARAMETERS = (
@@ -65,9 +65,7 @@ STATION_LOG_ROOT = LOG_ROOT / "station"
 LIGHTSTATE_LOG_FILE = LOG_ROOT / "lightstate.csv"
 
 # static files (fonts, css, etc.) for web application
-TEST_STATIC_ROOT = Path(__file__) / "visintent/assets"
-PROD_STATIC_ROOT = Path("/mnt/media/assets")
-STATIC_ROOT = TEST_STATIC_ROOT if TEST is True else PROD_STATIC_ROOT
+STATIC_ROOT = MEDIA_ROOT / "assets"
 
 # location of mock data files for testing
 MOCK_DATA_ROOT = Path(__file__).parent / "mock_data/mock_events_build_9"

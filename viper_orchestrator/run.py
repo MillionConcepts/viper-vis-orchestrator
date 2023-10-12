@@ -1,21 +1,25 @@
-"""simple run hook for testing. prod run hooks may be similar, or not."""
-import os
+"""simple run hook for testing."""
 import shutil
 import time
 
 from hostess.subutils import Viewer
-from viper_orchestrator.config import TEST_DB_PATH, MEDIA_ROOT, ROOTS
+from viper_orchestrator.config import (
+    MEDIA_ROOT,
+    ROOTS,
+    TEST,
+    DB_PATH,
+    LIGHTSTATE_LOG_FILE,
+)
 import viper_orchestrator.station.definition as vsd
 
 # STUFF FOR TEST
-shutil.rmtree(MEDIA_ROOT, ignore_errors=True)
-shutil.rmtree(TEST_DB_PATH, ignore_errors=True)
-for folder in ROOTS:
-    folder.mkdir(parents=True, exist_ok=True)
-try:
-    os.unlink("../logs/lightstate.csv")
-except FileNotFoundError:
-    pass
+if TEST is True:
+    shutil.rmtree(MEDIA_ROOT, ignore_errors=True)
+    shutil.rmtree(DB_PATH, ignore_errors=True)
+    for folder in ROOTS:
+        folder.mkdir(parents=True, exist_ok=True)
+    LIGHTSTATE_LOG_FILE.unlink(missing_ok=True)
+
 PROCESSOR_PATH = ("viper", "replay")
 
 station = vsd.create_station()
@@ -28,7 +32,7 @@ try:
     django_process = Viewer.from_command(
         "/opt/mambaforge/envs/viperdev/bin/python",
         "visintent/manage.py",
-        "runserver"
+        "runserver",
     )
     time.sleep(3)
     print(django_process.out)
