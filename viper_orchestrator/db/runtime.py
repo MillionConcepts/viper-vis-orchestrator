@@ -96,10 +96,10 @@ if TEST is True:
         pginit = Viewer.from_command(f"postgres -D {TEST_DB_PATH}")
         time.sleep(1)
         if "system is ready to accept connections" not in pginit.err[-1]:
-            # if it fails with the "another server might be running" message,
+            # if it fails with an "another server might be running" message,
             # assume we already launched it on purpose. i.e., don't kill it
             # when we leave...
-            if "another server might be running" not in pginit.stderr[0]:
+            if not re.match(r'.*FATAL:.*lock file "postmaster', pginit.err[0]):
                 pginit.kill()
                 raise construct_postgres_error(pginit, 'server failed launch')
             # ...but make sure we can still access it if we like.
@@ -110,9 +110,8 @@ if TEST is True:
 else:
     # code for connecting to the system-level postgresql server, whose
     # parameters are not yet defined, goes here
-    raise NotImplementedError
+    ENGINE = create_engine(f"postgresql:///{PROD_DB_PATH.name}")
 
-# TODO: this should be harmless, make sure it is
 for base in BASES:
     base.metadata.create_all(ENGINE)
 

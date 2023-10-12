@@ -1,7 +1,8 @@
 import datetime as dt
 import re
 from abc import ABC
-from collections import deque
+from collections import deque, defaultdict
+from itertools import chain
 
 import dateutil.parser
 import dateutil.tz
@@ -59,6 +60,28 @@ from viper_orchestrator.yamcsutils.mock import MockYamcsClient, MockContext
 
 # noinspection PyTypeChecker
 IMAGERECORD_COLUMNS = frozenset(c.name for c in ImageRecord.__table__.columns)
+
+
+def unpack_parameter_value(value):
+    rec = {}
+    for key in (
+        'eng_value',
+        'generation_time',
+        'monitoring_result',
+        'name',
+        'processing_status',
+        'range_condition',
+        'raw_value',
+        'reception_time',
+        'validity_duration',
+        'validity_status'
+    ):
+        rec[key] = getattr(value, key)
+    return rec
+
+
+def unpack_parameters(messages):
+    return [unpack_parameter_value(value) for value in messages.parameters]
 
 
 def thumbnail_16bit_tif(
@@ -120,16 +143,6 @@ def push(cache: MutableSequence, obj: Any):
     cache.append(obj)
 
 
-@curry
-def pop_from(
-    _, *, cache: Optional[deque] = None, **__
-) -> tuple[None, deque]:
-    """curried pop-from-cache function"""
-    if cache is None:
-        return None, deque()
-    return None, popleft(cache)
-
-
 def validate_pdict(pdict: Mapping):
     """
     validates that an object appears to be a dict constructed from a yamcs
@@ -148,10 +161,13 @@ class ImageCheck(Actor):
     """
 
     def match(self, pdict: dict, **_):
-        validate_pdict(pdict)
-        if not isinstance(pdict["eng_value"]["imageData"], bytes):
-            raise NoMatch("imageData is not a bytestring")
-        return True
+        try:
+            validate_pdict(pdict)
+            if not isinstance(pdict["eng_value"]["imageData"], bytes):
+                raise NoMatch("imageData is not a bytestring")
+            return True
+        except Exception as ex:
+            self.owner.owner._log("parameter match failed", exception=ex)
 
     def execute(self, node: Node, pdict: dict, **_):
         node.add_actionable_event(
@@ -194,13 +210,13 @@ class LightStateProcessor(Actor):
             elif measured == "ON" and self.owner.lightmem[light] is False:
                 switch_on.append(light)
                 state[light] = gentime
-        if self.owner.lightmem.get('generation_time') is not None:
-            try:
-                assert (
-                    gentime - self.owner.lightmem['generation_time']
-                ).total_seconds() > 0
-            except AssertionError:
-                print('bad!!!!!')
+        # if self.owner.lightmem.get('generation_time') is not None:
+        #     try:
+        #         assert (
+        #             gentime - self.owner.lightmem['generation_time']
+        #         ).total_seconds() > 0
+        #     except AssertionError:
+        #         print('bad!!!!!')
         columns = ("generation_time",) + tuple(luminaire_names.keys())
         if len(switch_on) + len(switch_off) > 0:
             if self.owner.logpath is not None:
@@ -290,10 +306,17 @@ class ParameterSensor(Sensor, ABC):
         super().__init__()
         self.cache = deque()
         self._push = push(self.cache)
-        self.checker = pop_from(cache=self.cache)
         self._parameters = []
         self._ctx, self._client, self._processor = None, None, None
         self._initialization_status = "uninitialized"
+
+    def checker(self, _, **__) -> tuple[None, deque]:
+        """curried pop-from-cache function"""
+        results = popleft(self.cache)
+        if self._mock is False:
+            results = deque(chain(*[unpack_parameters(r) for r in results]))
+        self._count += len(results)
+        return None, results
 
     def _init_subscription(self):
         """try to (re) nitialize the subscription."""
@@ -303,7 +326,7 @@ class ParameterSensor(Sensor, ABC):
                 self._initialization_status = f"need {name.strip('_')}"
                 return
         self._subscription = self._processor.create_parameter_subscription(
-            self._parameters, self._push
+            self._parameters, on_data=self._push
         )
 
     def _init_client(self):
@@ -314,12 +337,15 @@ class ParameterSensor(Sensor, ABC):
             self._client = MockYamcsClient(self._ctx)
         elif self.url is None:
             self._initialization_status = "need server url"
+            return
+        elif self.processor_path is None:
+            self._initialization_status = "need processor path"
+            return
         else:
             self._client = YamcsClient(self.url)
-        if self.processor_path is None:
-            self._initialization_status = "need processor path"
         self._processor = self._client.get_processor(*self.processor_path)
         self._init_subscription()
+        self._initialization_status = 'successfully subscribed'
 
     def _set_parameters(self, parameters: Collection[str]):
         self._parameters = list(parameters)
@@ -385,6 +411,11 @@ class ParameterSensor(Sensor, ABC):
         """
         return self._initialization_status
 
+    @property
+    def count(self) -> int:
+        """like intialization_status, cannot be assigned."""
+        return self._count
+
     name = "parameter_watch"
     parameters = property(_get_parameters, _set_parameters)
     actions: tuple[Actor]
@@ -397,8 +428,14 @@ class ParameterSensor(Sensor, ABC):
     _url = None
     processor_path = property(_get_processor_path, _set_processor_path)
     _processor_path = ("viper", "realtime")
+    _count = 0
     interface = (
-        "parameters", "mock", "processor_path", "url", "initialization_status"
+        "parameters",
+        "mock",
+        "processor_path",
+        "url",
+        "initialization_status",
+        "count"
     )
 
 
@@ -444,7 +481,7 @@ class LightSensor(ParameterSensor):
 
     name = "light_watch"
     actions = (LightStateProcessor,)
-    interface = ("parameters", "mock", "logpath")
+    interface = ParameterSensor.interface + ("logpath",)
     logpath = property(get_logpath, set_logpath)
     _logpath = None
 
@@ -454,6 +491,10 @@ class InsertIntoDatabase(Actor):
     take SQLAlchemy DeclarativeBase objects from a report and insert them
     into a database.
     """
+
+    def __init__(self):
+        super().__init__()
+        self._counts = defaultdict(int)
 
     def match(self, event: Any, **_) -> bool:
         event = listify(event)
@@ -465,11 +506,18 @@ class InsertIntoDatabase(Actor):
     def execute(self, node, event: Collection[DeclarativeBase], **_):
         event = listify(event)
         with OSession() as session:
-            for e in event:
-                # TODO: log db inserts and insert failures
-                session.add(e)
+            for row in event:
+                session.add(row)
             session.commit()
+        # do this afterwards because we only want to count successful inserts
+        for row in event:
+            self._counts[row.__class__.__name__] += 1
 
+    @property
+    def counts(self):
+        return dict(self._counts)
+
+    interface = ("counts",)
     actortype = ("completion", "info")
     name = "database"
 
@@ -522,7 +570,6 @@ class NotAnImageParameter(ValueError):
 
 
 def unpack_image_parameter_data(parameter: ParameterValue | Mapping):
-    # make this agnostic to mock or real parameter publications
     if not isinstance(parameter, ParameterValue):
         get = parameter.__getitem__
     else:
@@ -544,6 +591,9 @@ def unpack_image_parameter_data(parameter: ParameterValue | Mapping):
         )
     # parse dates expressed as strings into tz-aware dt.datetimes
     for k, v in parameter_dict.items():
+        if isinstance(v, dt.datetime):
+            parameter_dict[k] = v.astimezone(dt.UTC)
+            continue
         if not isinstance(v, str):
             continue
         # parse dates expressed as strings into tz-aware dt.datetimes

@@ -60,7 +60,7 @@ for folder in ROOTS:
 station = vsd.create_station()
 station.save_port_to_shared_memory()
 station.start()
-vsd.launch_delegates(station)
+vsd.launch_delegates(station, mock=True)
 # give delegate configuration a moment to propagate
 time.sleep(0.6)
 # make a shared mock context (fake websocket) for the mock yamcs server,

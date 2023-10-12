@@ -114,7 +114,7 @@ class MockServer:
     def _create_structure(
         self, record: dict, ix: int, **fields
     ) -> NestingDict:
-        record = {k: v for k, v in record.items() if not pd.isna(k)}
+        record = {k: v for k, v in record.items() if not pd.isna(v)}
         # add/overwrite requested keys first
         record |= fields
         # now re-nest the unnested values

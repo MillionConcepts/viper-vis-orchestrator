@@ -40,6 +40,7 @@ BASES = [
 
 # TODO: add PROD_DB_PATH based on gunicorn/nginx/docker config
 TEST_DB_PATH = (Path(__file__).parent / 'postgres').absolute()
+PROD_DB_PATH = "/mnt/database/postgres"
 TEST = True
 
 # TODO: add prod paths based on gunicorn/nginx/docker config

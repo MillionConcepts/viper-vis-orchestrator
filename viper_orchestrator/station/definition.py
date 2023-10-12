@@ -51,7 +51,7 @@ def launch_delegates(
     station: Station,
     mock: bool = False,
     processor_path: tuple[str, str] = ("viper", "realtime"),
-    yamcs_url="localhost:8090"
+    yamcs_url="localhost:8090/yamcs"
 ) -> None:
     """defines, launches, and queues config instructions for delegates"""
     thumbnail_watch_launch_spec = {
@@ -119,8 +119,8 @@ def launch_delegates(
         "light_watcher",
         light_watch_mock=mock,
         light_watch_parameters=[p for p in PARAMETERS if "Light" in p],
-        image_watch_processor_path=processor_path,
-        image_watch_url=yamcs_url,
+        light_watch_processor_path=processor_path,
+        light_watch_url=yamcs_url,
         # the light watcher manages its own on-disk backup event log,
         # analogous to the json labels produced in create_image.create()
         light_watch_logpath=LIGHT_LOGPATH,
