@@ -17,27 +17,27 @@
   font-family: 'Titillium Web';
   font-style: normal;
   font-weight: 500;
-  src: url(../fonts/TitilliumWeb-SemiBold.ttf);
+  src: url(/assets/fonts/TitilliumWeb-SemiBold.ttf);
 }
 
 @font-face {
   font-family: 'Titillium Web';
   font-style: normal;
   font-weight: 400;
-  src: url(../fonts/TitilliumWeb-Regular.ttf);
+  src: url(/assets/fonts/TitilliumWeb-Regular.ttf);
 }
 
 @font-face {
   font-family: 'Titillium Web';
   font-style: normal;
   font-weight: 300;
-  src: url(../fonts/TitilliumWeb-Light.ttf);
+  src: url(/assets/fonts/TitilliumWeb-Light.ttf);
 }
 
 @font-face {
     font-family: "Fira Mono";
     font-style: normal;
-    src: url(../fonts/FiraMono-Regular.ttf) format("truetype");
+    src: url(/assets/fonts/FiraMono-Regular.ttf) format("truetype");
     font-weight: 400;
 }
 

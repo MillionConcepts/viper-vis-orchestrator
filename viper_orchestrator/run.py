@@ -1,6 +1,7 @@
 """simple run hook for testing."""
 import shutil
 import time
+from pathlib import Path
 
 from hostess.subutils import Viewer
 from viper_orchestrator.config import (
@@ -12,13 +13,26 @@ from viper_orchestrator.config import (
 )
 import viper_orchestrator.station.definition as vsd
 
-# STUFF FOR TEST
+
 if TEST is True:
+    # clean up, start fresh
     shutil.rmtree(MEDIA_ROOT, ignore_errors=True)
     shutil.rmtree(DB_PATH, ignore_errors=True)
     for folder in ROOTS:
         folder.mkdir(parents=True, exist_ok=True)
     LIGHTSTATE_LOG_FILE.unlink(missing_ok=True)
+
+
+collect_static_process = Viewer.from_command(
+    "/opt/mambaforge/envs/viperdev/bin/python",
+    f"{Path(__file__).parent / 'visintent/manage.py'} collectstatic",
+    noinput=True,
+    _args_at_end=False
+)
+collect_static_process.wait()
+if collect_static_process.returncode() != 0:
+    print(collect_static_process.command)
+    raise OSError('\n'.join(collect_static_process.err))
 
 PROCESSOR_PATH = ("viper", "replay")
 

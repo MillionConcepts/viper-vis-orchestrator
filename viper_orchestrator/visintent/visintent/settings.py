@@ -1,7 +1,7 @@
 from pathlib import Path
 from random import randbytes
 
-from viper_orchestrator.config import MEDIA_ROOT, TEST
+from viper_orchestrator.config import MEDIA_ROOT, TEST, STATIC_ROOT
 
 TEST_SECRET_KEY = "11111"
 PROD_SECRET_KEY_PATH = Path(__file__).resolve().parent / "secrets/SECRET_KEY"
@@ -108,7 +108,7 @@ USE_TZ = True
 
 MEDIA_URL = "media/"
 
-STATIC_URL = "media/assets/"
+STATIC_URL = "assets/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 STATICFILES_DIRS = [Path(__file__).parent.parent / "static_dev"]

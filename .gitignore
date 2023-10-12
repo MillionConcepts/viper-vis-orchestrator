@@ -173,7 +173,7 @@ build_9*/
 /viper_orchestrator/visintent/visintent/secrets/
 
 # test database/media files/logs/input data
-/viper_orchestrator/db/vis_db/
+*/vis_db
 /viper_orchestrator/mock_data/
 logs/
 /viper_orchestrator/db/logfile
