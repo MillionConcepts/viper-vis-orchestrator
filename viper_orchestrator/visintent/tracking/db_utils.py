@@ -1,15 +1,28 @@
+from typing import Collection, Optional
+
 from cytoolz import keyfilter
+from django.forms import Form
 from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound
 
 from func import get_argnames
+from sqlalchemy.orm import Session, DeclarativeBase
 from viper_orchestrator.db.table_utils import image_request_capturesets
 from viper_orchestrator.visintent.tracking.forms import RequestForm
 
 
+# TODO: excessively baroque
 def _create_or_update_entry(
-    form, session, pivot, constructor_name=None, extra_attrs=None
-):
+    form: Form,
+    session: Session,
+    pivot: str,
+    constructor_name: str = None,
+    extra_attrs: Optional[Collection[str]] = None,
+) -> DeclarativeBase:
+    """
+    helper function for processing data from bound Forms into DeclarativeBase
+    objects
+    """
     try:
         # if this is an existing entry -- as determined by the
         # specified pivot field, which should have been extensively validated
@@ -27,8 +40,7 @@ def _create_or_update_entry(
             cids = set(map(int, ref.split(",")))
             ref = [
                 r
-                for r, cs
-                in image_request_capturesets().items()
+                for r, cs in image_request_capturesets().items()
                 if cs == cids
             ][0]
             pivot = "id"

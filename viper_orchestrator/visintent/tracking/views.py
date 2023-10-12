@@ -35,7 +35,7 @@ from vipersci.vis.db.image_requests import ImageRequest
 
 
 @never_cache
-def imagerequest(request):
+def imagerequest(request: WSGIRequest) -> HttpResponse:
     """render image request form page"""
     form = RequestForm.from_wsgirequest(request)
     editing = request.GET.get("editing", True)
@@ -68,7 +68,9 @@ def imagerequest(request):
 
 
 @never_cache
-def submitrequest(request):
+def submitrequest(
+    request: WSGIRequest
+) -> Union[HttpResponse, HttpResponseRedirect]:
     """
     handle request submission and redirect to errors or success notification
     as appropriate
@@ -304,5 +306,3 @@ def assign_records_from_capture_ids(
 
 def pages(request):
     return render(request, "pages.html")
-
-

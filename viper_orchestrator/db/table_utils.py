@@ -2,6 +2,7 @@
 from typing import Collection, Union
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from viper_orchestrator.db import OSession
 from vipersci.vis.db.image_records import ImageRecord, ImageType
@@ -52,7 +53,8 @@ def image_request_capturesets():
     return capture_sets
 
 
-def has_lossless(products):
+def has_lossless(products: Collection[ImageRecord]) -> bool:
+    """are any of these ImageRecords lossless?"""
     return any(
         ImageType(p.output_image_mask).name.startswith("LOSSLESS")
         for p in products
@@ -77,7 +79,10 @@ def capture_ids_to_product_ids(
     return set(pids)
 
 
-def records_from_capture_ids(cids, session):
+def records_from_capture_ids(
+    cids: Collection[int], session: Session
+) -> list[ImageRecord]:
+    """get all ImageRecords who belong to any of the captures in cids."""
     records = []
     if cids is None:
         return []

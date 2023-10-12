@@ -2,7 +2,7 @@ import datetime as dt
 from pathlib import Path
 import random
 from string import ascii_letters
-from typing import Optional, Mapping
+from typing import Optional, Mapping, Collection, Literal
 
 from django.forms import (
     ChoiceField,
@@ -11,19 +11,23 @@ from django.forms import (
     IntegerField,
     CharField,
     DateTimeField,
+    Form,
 )
 from hostess.utilities import curry
 from sqlalchemy import select
 
-from viper_orchestrator.config import PARAMETERS, MOCK_EVENT_PARQUET, \
-    MOCK_BLOBS_FOLDER
+from viper_orchestrator.config import (
+    PARAMETERS,
+    MOCK_EVENT_PARQUET,
+    MOCK_BLOBS_FOLDER,
+)
 from vipersci.vis.db.image_records import ImageRecord
 
 from viper_orchestrator.db import OSession
-from viper_orchestrator.yamcsutils.mock import MockServer
+from viper_orchestrator.yamcsutils.mock import MockServer, MockContext
 from viper_orchestrator.visintent.tracking.forms import PLSubmission
 from viper_orchestrator.visintent.tracking.db_utils import (
-    _create_or_update_entry
+    _create_or_update_entry,
 )
 
 # where do our mock events live?
@@ -39,10 +43,10 @@ class FakeWSGIRequest:
             self.GET = get_values
 
 
-def randomize_form(form, skipfields=()):
+def randomize_form(form: Form, skipfields: Collection[str] = ()):
     """
-    fill a django form with random data and validate it. likely to fail on
-    forms with complex validation rules.
+    fill an unbound django Form with random data, then bind and validate it.
+    likely to fail on forms with complex validation rules.
     """
     for name, field in form.fields.items():
         if name in skipfields:
@@ -63,7 +67,10 @@ def randomize_form(form, skipfields=()):
     assert form.is_valid()
 
 
-def image_records_by_compression():
+def image_records_by_compression() -> dict[
+    Literal["lossy", "lossless"], list[ImageRecord]
+]:
+    """return a dict distinguishing lossy from lossless ImageRecords."""
     with OSession() as session:
         products = session.scalars(select(ImageRecord)).all()
     compdict = {"lossy": [], "lossless": []}
@@ -75,7 +82,7 @@ def image_records_by_compression():
     return compdict
 
 
-def make_mock_server(ctx=None):
+def make_mock_server(ctx: Optional[MockContext] = None) -> MockServer:
     """
     create a mock yamcs server backed by a parquet file and a directory of
     binary blobs
@@ -83,7 +90,7 @@ def make_mock_server(ctx=None):
     server = MockServer(
         events=MOCK_EVENT_PARQUET,
         blobs_folder=MOCK_BLOBS_FOLDER,
-        mode="sequential"
+        mode="sequential",
     )
     server.parameters = list(PARAMETERS)
     # optionally, connect this server to a MockContext used by one or more
@@ -94,7 +101,7 @@ def make_mock_server(ctx=None):
     return server
 
 
-def make_random_pl_submission(pid):
+def make_random_pl_submission(pid: int):
     plform = PLSubmission(product_id=pid)
     randomize_form(plform)
     with OSession() as session:

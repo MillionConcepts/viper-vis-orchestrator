@@ -1,3 +1,4 @@
+"""conventional django forms module"""
 import datetime as dt
 import warnings
 from typing import Optional
@@ -8,8 +9,11 @@ from django.core.exceptions import ValidationError
 from sqlalchemy import select
 
 from viper_orchestrator.db import OSession
-from viper_orchestrator.db.table_utils import image_request_capturesets, \
-    get_capture_ids, capture_ids_to_product_ids
+from viper_orchestrator.db.table_utils import (
+    image_request_capturesets,
+    get_capture_ids,
+    capture_ids_to_product_ids,
+)
 from viper_orchestrator.visintent.tracking.tables import (
     ProtectedListEntry,
 )
@@ -30,12 +34,12 @@ class RequestForm(forms.Form):
     """form for submitting or editing an image request."""
 
     def __init__(
-            self,
-            *args,
-            capture_id=None,
-            image_request: Optional[ImageRequest] = None,
-            request_id=None,
-            **kwargs,
+        self,
+        *args,
+        capture_id=None,
+        image_request: Optional[ImageRequest] = None,
+        request_id=None,
+        **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.capture_id, self.image_request = capture_id, image_request
@@ -52,9 +56,9 @@ class RequestForm(forms.Form):
                     field.required, field.disabled = False, True
         if image_request is not None:
             for field_name, field in self.fields.items():
-                if field_name == 'compression':
+                if field_name == "compression":
                     field.initial = image_request.compression.name.capitalize()
-                elif field_name == 'camera_request':
+                elif field_name == "camera_request":
                     field.initial = self._image_request_to_camera_request(
                         image_request
                     )
@@ -352,7 +356,7 @@ class RequestForm(forms.Form):
             else:
                 cam = request.hazcams
             if cam == "Any":
-                camera_request = 'hazcam_any'
+                camera_request = "hazcam_any"
             else:
                 camera_request = vis_instruments[cam].lower().replace(" ", "_")
         else:
@@ -458,7 +462,6 @@ class PLSubmission(forms.Form):
     request_time = None
 
 
-# TODO: no idea where we should actually save these
 def request_supplementary_path(id_, fn="none"):
     # TODO: naming convention is slightly sketchy
     return MEDIA_ROOT / f"request_supplementary_data/request_{id_}/{fn}"

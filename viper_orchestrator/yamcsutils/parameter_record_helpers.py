@@ -7,6 +7,7 @@ import datetime as dt
 from pathlib import Path
 from typing import Union, Collection
 
+import viper_orchestrator.station.utilities
 from dustgoggles.pivot import numeric_columns
 from dustgoggles.structures import NestingDict, unnest
 import numpy as np
@@ -37,7 +38,7 @@ def unpack_pickled_parameters(pickle_file: Union[str, Path]) -> pd.DataFrame:
     if not isinstance(records, list):
         cache = []
         for rec in records:
-            cache += rec.popleft("cache")
+            cache += viper_orchestrator.station.utilities.popleft("cache")
     else:
         cache = records
     del records

@@ -49,7 +49,11 @@ def construct_postgres_error(viewer, text="postgres server failed init"):
     )
 
 
-def run_postgres_command(command, initializing=False):
+def run_postgres_command(command, initializing=False) -> Viewer:
+    """
+    run a managed postgres command, waiting and validating output as
+    appropriate.
+    """
     process = Viewer.from_command(command)
     waiting, _ = timeout_factory(True, 5)
     while True:
@@ -75,8 +79,8 @@ def run_postgres_command(command, initializing=False):
                     if initializing is True:
                         raise construct_postgres_error(
                             process,
-                            'server is already running during initialization; '
-                            'something is wrong'
+                            "server is already running during initialization; "
+                            "something is wrong",
                         )
                     process.kill()
                     return process
@@ -115,7 +119,7 @@ if not Path(DB_PATH).exists():
             # edit conf file to ensure timezone is set to UTC
             text = (DB_PATH / "postgresql.conf").open().read()
             text = re.sub("\ntimezone.*?\n", "\ntimezone = 'UTC'\n", text)
-            with (DB_PATH / "postgresql.conf").open('w') as stream:
+            with (DB_PATH / "postgresql.conf").open("w") as stream:
                 stream.write(text)
         # if we start the server ourselves, kill it on exit
         atexit.register(shut_down_postgres)
@@ -133,7 +137,7 @@ for base in BASES:
 
 
 # initialize pseudo-enum from configuration file
-# NOTE: semi-vendored from init functions in science repo. it must exactly copy 
+# NOTE: semi-vendored from init functions in science repo. it must exactly copy
 # this 'official' code and should not be changed.
 # TODO: add license note
 def set_up_tags():

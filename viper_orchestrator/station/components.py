@@ -1,36 +1,31 @@
+"""
+Sensors, Actors, and Message constructors for the orchestrator application
+"""
 import datetime as dt
-import re
 from abc import ABC
 from collections import deque, defaultdict
 from itertools import chain
+from pathlib import Path
+from typing import (
+    Any,
+    Collection,
+    Optional,
+    Mapping,
+)
 
-import dateutil.parser
-import dateutil.tz
-import numpy as np
-from PIL import Image
-from cytoolz import itemfilter
 from dustgoggles.structures import listify
 from google.protobuf.message import Message
-from imageio.v3 import imread
-from io import BytesIO
-from pathlib import Path
 from sqlalchemy import (
     Integer,
     ForeignKey,
     Identity,
 )
 from sqlalchemy.orm import DeclarativeBase, mapped_column
-from typing import (
-    Any,
-    MutableSequence,
-    Collection,
-    Optional,
-    Mapping,
-)
-
+from viper_orchestrator.station.utilities import UnpackedParameter, \
+    unpack_parameters, popleft, push, validate_pdict, \
+    unpack_image_parameter_data
 from yamcs.client import YamcsClient
 
-from viper_orchestrator.config import BROWSE_ROOT
 from hostess.station.actors import reported
 from hostess.station.bases import (
     Actor,
@@ -47,58 +42,23 @@ from hostess.station.messages import (
     pack_obj,
 )
 from hostess.station.proto import station_pb2 as pro
-from hostess.utilities import curry
+from viper_orchestrator.config import BROWSE_ROOT
+from viper_orchestrator.db import OSession
 from viper_orchestrator.timeutils import stringify_timedict
+from viper_orchestrator.yamcsutils.mock import MockYamcsClient, MockContext
 from vipersci.pds.pid import VISID
+from vipersci.vis import create_image
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_stats import ImageStats
-from vipersci.vis import create_image
 from vipersci.vis.db.light_records import luminaire_names, LightRecord
-from yamcs.tmtc.model import ParameterValue
-from viper_orchestrator.db import OSession
-from viper_orchestrator.yamcsutils.mock import MockYamcsClient, MockContext
 
 # noinspection PyTypeChecker
-IMAGERECORD_COLUMNS = frozenset(c.name for c in ImageRecord.__table__.columns)
 
 
-def unpack_parameter_value(value):
-    rec = {}
-    for key in (
-        'eng_value',
-        'generation_time',
-        'monitoring_result',
-        'name',
-        'processing_status',
-        'range_condition',
-        'raw_value',
-        'reception_time',
-        'validity_duration',
-        'validity_status'
-    ):
-        rec[key] = getattr(value, key)
-    return rec
-
-
-def unpack_parameters(messages):
-    return [unpack_parameter_value(value) for value in messages.parameters]
-
-
-def thumbnail_16bit_tif(
-    inpath: Path, outpath: Path, size: tuple[int, int] = (240, 240)
-):
-    # noinspection PyTypeChecker
-    im = np.asarray(Image.open(inpath))
-    # PIL's built-in conversion for 16-bit integer images does bad things
-    im = Image.fromarray(np.floor(im / 65531 * 255).astype(np.uint8))
-    im.thumbnail(size)
-    im.save(outpath)
-
-
-def process_image_instruction(note) -> pro.Action:
+def process_image_instruction(note: UnpackedParameter) -> pro.Action:
     """
-    make an Action describing a function call task to be inserted into an
-    Instruction.
+    convert a mapping constructed from an unpacked ParameterValue into an
+    Action message specifying an image processing task.
     """
     instrument = VISID.instrument_name(
         note["data"]["eng_value"]["imageHeader"]["cameraId"]
@@ -114,7 +74,11 @@ def process_image_instruction(note) -> pro.Action:
     return make_instruction("do", action=action)
 
 
-def thumbnail_instruction(note):
+def thumbnail_instruction(note: Mapping[str]) -> pro.Action:
+    """
+    convert a report of a newly-published image into an Action message
+    specifying a thumbnailing task.
+    """
     action = make_function_call_action(
         func="thumbnail_16bit_tif",
         module="viper_orchestrator.station.actors",
@@ -127,31 +91,6 @@ def thumbnail_instruction(note):
         description={"title": Path(note["content"]).name},
     )
     return make_instruction("do", action=action)
-
-
-def popleft(cache: deque) -> deque:
-    """pop everything from a sequence and return it in a deque"""
-    output = deque()
-    while len(cache) > 0:
-        output.append(cache.popleft())
-    return output
-
-
-@curry
-def push(cache: MutableSequence, obj: Any):
-    """curried push-to-cache function"""
-    cache.append(obj)
-
-
-def validate_pdict(pdict: Mapping):
-    """
-    validates that an object appears to be a dict constructed from a yamcs
-    ParameterData object.
-    """
-    if not isinstance(pdict, Mapping):
-        raise NoMatch("this is not a dict")
-    if "eng_value" not in pdict.keys():
-        raise NoMatch("no eng_value key")
 
 
 class ImageCheck(Actor):
@@ -210,20 +149,17 @@ class LightStateProcessor(Actor):
             elif measured == "ON" and self.owner.lightmem[light] is False:
                 switch_on.append(light)
                 state[light] = gentime
-        # if self.owner.lightmem.get('generation_time') is not None:
-        #     try:
-        #         assert (
-        #             gentime - self.owner.lightmem['generation_time']
-        #         ).total_seconds() > 0
-        #     except AssertionError:
-        #         print('bad!!!!!')
+        # TODO, maybe: log 'backwards' times
         columns = ("generation_time",) + tuple(luminaire_names.keys())
+        # log all changes in light state to disk.
         if len(switch_on) + len(switch_off) > 0:
             if self.owner.logpath is not None:
                 with self.owner.logpath.open("a") as stream:
                     dump = stringify_timedict(state)
                     stream.write(f"{','.join(dump[c] for c in columns)}\n")
-        # note that we only write a record for a light _when it turns off_
+        # however, we only construct a LightRecord when a light turns _off_.
+        # this is because each LightRecord represents a time range in which a
+        # light is on.
         recs = []
         for light in switch_off:
             rec = LightRecord(
@@ -243,6 +179,8 @@ class DBCheck(Actor):
     """
     checks whether a dict constructed from a yamcs parameter contains a
     recordable value that is _not_ a serialized image.
+
+    not currently used.
     """
 
     def match(self, pdict: dict, **_):
@@ -276,8 +214,12 @@ class ImageProcessor(Actor):
         return True
 
     @reported
-    def execute(self, node: Node, action: Message, key=None, noid=False, **_):
-        # localcall is a serialized NestingDict created from ParameterData
+    def execute(
+        self, node: Node, action: Message, key=None, noid=False, **_
+    ) -> ImageRecord:
+        # localcall is a serialized mapping created from ParameterData.
+        # d is a mapping containing metadata including image header
+        # values; im is an ndarray containing the image data.
         d, im = unpack_image_parameter_data(unpack_obj(action.localcall))
         # this converts that to an in-memory ImageRecord object
         return create_image.create(d, im, outdir=self.outdir)
@@ -319,7 +261,7 @@ class ParameterSensor(Sensor, ABC):
         return None, results
 
     def _init_subscription(self):
-        """try to (re) nitialize the subscription."""
+        """try to (re)initialize the subscription."""
         for name in ("_client", "_processor", "parameters"):
             attr = getattr(self, name)
             if (attr is None) or (isinstance(attr, list) and len(attr) == 0):
@@ -360,7 +302,7 @@ class ParameterSensor(Sensor, ABC):
         if is_mock == self._mock:
             return
         self._mock = is_mock
-        # reinit client with specified mockness
+        # (re)initialize client with specified mockness
         self._init_client()
 
     def _get_mock(self) -> bool:
@@ -527,6 +469,7 @@ class OrchestratorBase(DeclarativeBase):
 
 
 class CreationRecord(OrchestratorBase):
+    """table containing a record of db inserts. not currently used."""
     __tablename__ = "creation_record"
     id = mapped_column(Integer, Identity(start=1), primary_key=True)
     instruction_id = mapped_column(
@@ -546,66 +489,6 @@ class CreationRecord(OrchestratorBase):
         nullable=True,
         doc="reference to image stats created by this instruction",
     )
-
-
-def temp_hardcoded_header_values():
-    # These are hard-coded until we figure out where they come from.
-    return {
-        "bad_pixel_table_id": 0,
-        "hazlight_aft_port_on": False,
-        "hazlight_aft_starboard_on": False,
-        "hazlight_center_port_on": False,
-        "hazlight_center_starboard_on": False,
-        "hazlight_fore_port_on": False,
-        "hazlight_fore_starboard_on": False,
-        "navlight_left_on": False,
-        "navlight_right_on": False,
-        "mission_phase": "TEST",
-        "purpose": "Navigation",
-    }
-
-
-class NotAnImageParameter(ValueError):
-    pass
-
-
-def unpack_image_parameter_data(parameter: ParameterValue | Mapping):
-    if not isinstance(parameter, ParameterValue):
-        get = parameter.__getitem__
-    else:
-        get = parameter.__getattribute__
-    if len({"imageHeader", "imageData"} & get("eng_value").keys()) != 2:
-        raise NotAnImageParameter
-    parameter_dict = (
-        {
-            "yamcs_name": get("name"),
-            "yamcs_generation_time": get("generation_time"),
-        }
-        | get("eng_value")["imageHeader"]
-        | temp_hardcoded_header_values()
-    )
-    if isinstance(parameter, dict):
-        # allows us to explicitly manipulate ImageRecord constructors
-        parameter_dict |= itemfilter(
-            lambda kv: kv[0] not in ("eng_value", "raw_value"), parameter
-        )
-    # parse dates expressed as strings into tz-aware dt.datetimes
-    for k, v in parameter_dict.items():
-        if isinstance(v, dt.datetime):
-            parameter_dict[k] = v.astimezone(dt.UTC)
-            continue
-        if not isinstance(v, str):
-            continue
-        # parse dates expressed as strings into tz-aware dt.datetimes
-        if isinstance(v, str) and re.match(r"20\d\d-\d\d-", v):
-            parameter_dict[k] = dateutil.parser.parse(v).astimezone(dt.UTC)
-    with BytesIO(get("eng_value")["imageData"]) as f:
-        image: np.ndarray = imread(f)
-    # filter parameters that can cause undefined behavior in ImageRecord
-    for badkey in ("generation_time", "reception_time"):
-        parameter_dict.pop(badkey, None)
-    return parameter_dict, image
-
 
 # class ArchiveSensor(Sensor):
 #     """

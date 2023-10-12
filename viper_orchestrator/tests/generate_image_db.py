@@ -20,7 +20,7 @@ from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.light_records import LightRecord
 
 
-def serve_images(max_products: int, server: MockServer):
+def serve_images(max_products: int, server: MockServer) -> int:
     total_products = 0
     for i in range(max_products):
         try:
@@ -36,7 +36,7 @@ def serve_images(max_products: int, server: MockServer):
     return total_products
 
 
-def serve_light_states(server: MockServer):
+def serve_light_states(server: MockServer) -> tuple[int, int]:
     measured_state_cols = server._pickable[
         [c for c in server._pickable.columns if re.match("eng.*measured", c)]
     ]

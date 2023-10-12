@@ -1,14 +1,24 @@
 import datetime as dt
 import time
 from collections import defaultdict, deque
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, Future
 from itertools import count
 from pathlib import Path
 from random import shuffle
-from typing import Literal, Any, Optional, Collection, Iterator, Callable, \
-    Mapping, Hashable
+from typing import (
+    Literal,
+    Any,
+    Optional,
+    Collection,
+    Iterator,
+    Callable,
+    Mapping,
+    Hashable,
+    MutableMapping,
+)
 
 import pandas as pd
+import viper_orchestrator.station.utilities
 from cytoolz import get_in
 from dustgoggles.structures import dig_and_edit, NestingDict
 from pyarrow import parquet
@@ -24,7 +34,7 @@ def _poll_ctx(
     on_data: Callable,
     delay: float,
     signals: Mapping[Hashable, int],
-    thread_id: Hashable
+    thread_id: Hashable,
 ):
     """poll a cache representing a yamcs server websocket."""
     while True:
@@ -54,7 +64,7 @@ class MockServer:
         self.source = (
             cast_to_nullable_integer(parquet.read_table(events).to_pandas())
             .replace("nan", float("nan"))
-            .sort_values(by='generation_time')
+            .sort_values(by="generation_time")
         )
         self.blobs_folder = blobs_folder
         self.log, self._parameters, self._pickable, = (
@@ -73,28 +83,28 @@ class MockServer:
             if self.mode in ("replacement", "no_replacement"):
                 shuffle(self._pickable_indices)
             if self.mode in ("no_replacement", "sequential"):
-                ix = self._pickable_indices.popleft()
+                ix = viper_orchestrator.station.utilities.popleft()
             else:
                 ix = self._pickable_indices[0]
         try:
             record = self._pdict[ix]
         except IndexError:
             raise IndexError("event_ix not in pickable indices")
-        self.log.append((record['name'], record['generation_time'], ix))
+        self.log.append((record["name"], record["generation_time"], ix))
         return record, ix
 
     def _get_event_range(
         self,
         parameters: Collection[str],
         start: Optional[dt.datetime] = None,
-        stop: Optional[dt.datetime] = None
+        stop: Optional[dt.datetime] = None,
     ) -> pd.DataFrame:
         rangeslice = self.source
         if start is not None:
-            rangeslice = rangeslice.loc[rangeslice['generation_time'] > start]
+            rangeslice = rangeslice.loc[rangeslice["generation_time"] > start]
         if stop is not None:
-            rangeslice = rangeslice[rangeslice['generation_time'] < stop]
-        return rangeslice.loc[rangeslice['name'].isin(parameters)]
+            rangeslice = rangeslice[rangeslice["generation_time"] < stop]
+        return rangeslice.loc[rangeslice["name"].isin(parameters)]
 
     def _set_parameters(self, parameters):
         self._parameters = parameters
@@ -105,7 +115,7 @@ class MockServer:
                 self.source["name"].isin(self._parameters)
             ]
         self._pickable_indices = deque(self._pickable.index)
-        self._pdict = self._pickable.to_dict('index')
+        self._pdict = self._pickable.to_dict("index")
 
     def _get_parameters(self):
         return self._parameters
@@ -140,12 +150,13 @@ class MockServer:
             setter_func=lambda _, v: v.to_pydatetime().astimezone(
                 dt.timezone.utc
             ),
-            mtypes=(dict, NestingDict)
+            mtypes=(dict, NestingDict),
         )
 
     def _add_blob(
         self, event: NestingDict, data_type: Literal["eng", "raw"], ix: int
     ) -> NestingDict[str, Any]:
+        """add stored binary blobs to a mock parameter publication"""
         matches = filter(
             lambda p: p.name.startswith(f"pivot_{ix}_{data_type}"),
             self.blobs_folder.iterdir(),
@@ -163,7 +174,7 @@ class MockServer:
         parameters: Collection[str],
         start: Optional[dt.datetime] = None,
         stop: Optional[dt.datetime] = None,
-        **fields
+        **fields,
     ) -> Iterator[NestingDict[str, Any]]:
         """
         return an iterator of NestingDicts structured like 'unpacked' yamcs
@@ -177,9 +188,7 @@ class MockServer:
         )
 
     def serve_event(
-        self,
-        event_ix: Optional[int] = None,
-        **fields
+        self, event_ix: Optional[int] = None, **fields
     ) -> NestingDict[str, Any]:
         """
         return a NestingDict structured like 'unpacked' yamcs ParameterData.
@@ -200,11 +209,13 @@ class MockServer:
 
     @property
     def start_time(self):
-        return self.source['generation_time'].min().to_pydatetime()
+        """first timestamp in mock data"""
+        return self.source["generation_time"].min().to_pydatetime()
 
     @property
     def stop_time(self):
-        return self.source['generation_time'].max().to_pydatetime()
+        """last timestamp in mock data"""
+        return self.source["generation_time"].max().to_pydatetime()
 
     parameters = property(_get_parameters, _set_parameters)
     ctx = None
@@ -222,7 +233,11 @@ class MockContext:
     is intentionally volatile.
     """
 
-    def __init__(self, cache=None, n_threads=4):
+    def __init__(
+        self,
+        cache: Optional[MutableMapping[str, deque]] = None,
+        n_threads: int = 4,
+    ):
         self.exec = ThreadPoolExecutor(n_threads)
         if cache is None:
             self.cache = defaultdict(deque)
@@ -235,7 +250,9 @@ class MockContext:
     def __setitem__(self, key, value):
         self.cache[key] = value
 
-    def run(self, parameters, on_data, delay):
+    def run(
+        self, parameters: Collection[str], on_data: Callable, delay: float
+    ) -> tuple[Future, int]:
         thread_id = next(self._counter)
         self._signals[thread_id] = 0
         manager = self.exec.submit(
@@ -249,15 +266,18 @@ class MockContext:
         )
         return manager, thread_id
 
-    def addevent(self, param, event):
+    def addevent(self, param: str, event: Any):
+        """simulate a parameter value publication"""
         self[param].append(event)
 
     def kill(self):
+        """shut the context down"""
         for thread_id in self._signals.keys():
             self._signals[thread_id] = 1
         self.exec.shutdown(wait=False, cancel_futures=True)
 
     def cancel(self, thread_id):
+        """attempt to cancel a thread"""
         self._signals[thread_id] = 1
 
 
@@ -267,7 +287,7 @@ class MockYamcsClient:
     def __init__(
         self,
         ctx: Optional[MockContext] = None,
-        server: Optional[MockServer] = None
+        server: Optional[MockServer] = None,
     ):
         if ctx is None and server is None:
             raise TypeError("either ctx or server must be defined")
@@ -293,10 +313,7 @@ class MockArchive:
     """
 
     def __init__(
-        self,
-        client: MockYamcsClient,
-        instance: str,
-        server: MockServer
+        self, client: MockYamcsClient, instance: str, server: MockServer
     ):
         self.instance = instance
         self.server = server
@@ -307,7 +324,7 @@ class MockArchive:
         parameters: Collection[str],
         start: Optional[dt.datetime] = None,
         stop: Optional[dt.datetime] = None,
-        **fields
+        **fields,
     ) -> Iterator[NestingDict[str, Any]]:
         return self.server.get_from_archive(
             parameters, start=start, stop=stop, **fields
@@ -318,11 +335,13 @@ class MockArchive:
         parameter: str,
         start: Optional[dt.datetime] = None,
         stop: Optional[dt.datetime] = None,
-        **fields
+        **fields,
     ) -> Iterator[NestingDict[str, Any]]:
         return self.server.get_from_archive(
             (parameter,), start=start, stop=stop, **fields
         )
+
+
 # overloading the term "processor" is v. confusing IMO, but I'm
 # following their naming structure.
 
@@ -335,7 +354,7 @@ class MockYamcsProcessor:
         client: MockYamcsClient,
         instance: str,
         processor: str,
-        ctx: MockContext
+        ctx: MockContext,
     ):
         self.instance = instance
         self.processor = processor
@@ -343,9 +362,7 @@ class MockYamcsProcessor:
         self.client = client
 
     def create_parameter_subscription(
-        self,
-        parameters: Collection[str],
-        on_data: Callable
+        self, parameters: Collection[str], on_data: Callable
     ) -> "MockSubscription":
         return MockSubscription(parameters, on_data, self, self.ctx)
 
@@ -359,7 +376,7 @@ class MockSubscription:
         on_data: Callable[[NestingDict], None],
         yamcs_processor: MockYamcsProcessor,
         ctx: MockContext,
-        delay: float = 0.1
+        delay: float = 0.1,
     ):
         if isinstance(parameters, str):
             raise TypeError("parameters must be a collection of str")
@@ -394,7 +411,10 @@ def test_mock_client():
     ctx.kill()
 
 
-def put_into_dict(key, top_level_dict, record):
+def put_into_dict(
+    key: str, top_level_dict: MutableMapping, record: Mapping
+):
+    """re-nest 'flattened' parameter values."""
     list_of_keys = key.split("_value_")[1].split("_")
     target_dict = get_in(list_of_keys[:-1], top_level_dict)
     target_dict[list_of_keys[-1]] = record[key]

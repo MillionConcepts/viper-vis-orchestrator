@@ -1,3 +1,4 @@
+"""high-level definition of the orchestrator application."""
 from pathlib import Path
 import random
 
