@@ -10,7 +10,7 @@ from viper_orchestrator.config import (
     LIGHTSTATE_LOG_FILE,
     STATION_LOG_ROOT,
 )
-from viper_orchestrator.station.actors import (
+from viper_orchestrator.station.components import (
     InsertIntoDatabase,
     process_image_instruction,
     thumbnail_instruction,

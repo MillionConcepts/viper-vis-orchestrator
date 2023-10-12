@@ -21,9 +21,14 @@ from sqlalchemy import (
     Identity,
 )
 from sqlalchemy.orm import DeclarativeBase, mapped_column
-from viper_orchestrator.station.utilities import UnpackedParameter, \
-    unpack_parameters, popleft, push, validate_pdict, \
-    unpack_image_parameter_data
+from viper_orchestrator.station.utilities import (
+    UnpackedParameter,
+    unpack_parameters,
+    popleft,
+    push,
+    validate_pdict,
+    unpack_image_parameter_data,
+)
 from yamcs.client import YamcsClient
 
 from hostess.station.actors import reported
@@ -287,7 +292,7 @@ class ParameterSensor(Sensor, ABC):
             self._client = YamcsClient(self.url)
         self._processor = self._client.get_processor(*self.processor_path)
         self._init_subscription()
-        self._initialization_status = 'successfully subscribed'
+        self._initialization_status = "successfully subscribed"
 
     def _set_parameters(self, parameters: Collection[str]):
         self._parameters = list(parameters)
@@ -377,7 +382,7 @@ class ParameterSensor(Sensor, ABC):
         "processor_path",
         "url",
         "initialization_status",
-        "count"
+        "count",
     )
 
 
@@ -418,7 +423,7 @@ class LightSensor(ParameterSensor):
         self._logpath = Path(logpath)
         if not self.logpath.exists():
             columns = ("generation_time",) + tuple(luminaire_names.keys())
-            with self.logpath.open('w') as stream:
+            with self.logpath.open("w") as stream:
                 stream.write(f"{','.join(columns)}\n")
 
     name = "light_watch"
@@ -470,6 +475,7 @@ class OrchestratorBase(DeclarativeBase):
 
 class CreationRecord(OrchestratorBase):
     """table containing a record of db inserts. not currently used."""
+
     __tablename__ = "creation_record"
     id = mapped_column(Integer, Identity(start=1), primary_key=True)
     instruction_id = mapped_column(
@@ -489,6 +495,7 @@ class CreationRecord(OrchestratorBase):
         nullable=True,
         doc="reference to image stats created by this instruction",
     )
+
 
 # class ArchiveSensor(Sensor):
 #     """
