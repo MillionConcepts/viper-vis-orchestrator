@@ -164,15 +164,16 @@ mock_events*/
 viper-yamcs*/
 *.raw
 viper_orchestrator/media/
-*.sqlite3
 *.npy
 build_9*/
 *.pkl
-*/postgres
 /media
 
-# application logs
-logs/
-/viper_orchestrator/db/postgres/
-/viper_orchestrator/db/logfile
+# web application secrets
+/viper_orchestrator/visintent/visintent/secrets/
+
+# test database/media files/logs/input data
+/viper_orchestrator/db/vis_db/
 /viper_orchestrator/mock_data/
+logs/
+/viper_orchestrator/db/logfile

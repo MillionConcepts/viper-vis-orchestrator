@@ -1,11 +1,28 @@
 from pathlib import Path
+from random import randbytes
 
 from viper_orchestrator.config import MEDIA_ROOT
 
-BASE_DIR = Path(__file__).resolve().parent.parent
 
-# TODO: unsuitable for production
-SECRET_KEY = "11111"
+TEST_SECRET_KEY = "11111"
+PROD_SECRET_KEY_PATH = Path(__file__).resolve().parent / "secrets/SECRET_KEY"
+
+
+def read_prod_secret_key():
+    with PROD_SECRET_KEY_PATH.open() as stream:
+        return stream.read()
+
+
+def get_prod_secret_key():
+    try:
+        return read_prod_secret_key()
+    except FileNotFoundError:
+        with PROD_SECRET_KEY_PATH.open("w") as stream:
+            stream.write(str(randbytes(20)))
+        return read_prod_secret_key()
+
+
+PROD_SECRET_KEY = get_prod_secret_key()
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -86,17 +103,9 @@ USE_I18N = True
 
 USE_TZ = True
 
-# TODO: unknown where we're actually writing these.
-# TODO, maybe: put this behind gunicorn/nginx. note that the canonical
-#  external-server methods are strictly not available to us, malicious actions
-#  by internal users are not considered a major source of risk, and this
-#  application will never face the Internet. It is a question of efficiency
-#  only.
-# TODO, alternatively: we may need to interact with a preexisting Apache server
-#  or something in some way, so don't make this decision as of yet.
 MEDIA_URL = "media/"
-STATICFILES_DIRS = [Path(BASE_DIR) / "static_dev"]
-STATIC_ROOT = Path(BASE_DIR) / "static_pro"
-STATIC_URL = "static/"
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+STATIC_URL = "static/"
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+STATICFILES_DIRS = [Path(__file__).parent.parent / "static_dev"]

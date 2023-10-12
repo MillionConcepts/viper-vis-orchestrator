@@ -6,7 +6,7 @@ from hostess.station.station import Station
 from viper_orchestrator.config import (
     DATA_ROOT,
     PARAMETERS,
-    LIGHT_LOGPATH,
+    LIGHTSTATE_LOG_FILE,
     STATION_LOG_ROOT,
 )
 from viper_orchestrator.station.actors import (
@@ -123,7 +123,7 @@ def launch_delegates(
         light_watch_url=yamcs_url,
         # the light watcher manages its own on-disk backup event log,
         # analogous to the json labels produced in create_image.create()
-        light_watch_logpath=LIGHT_LOGPATH,
+        light_watch_logpath=LIGHTSTATE_LOG_FILE,
     )
     station.set_delegate_properties(
         "image_processor", image_processor_outdir=DATA_ROOT
