@@ -11,7 +11,7 @@ dependencies:
   - more-itertools
   - pandas
   - postgis
-  - postgres
+  - postgresql
   - pyyaml
   - protobuf
   - psutil
