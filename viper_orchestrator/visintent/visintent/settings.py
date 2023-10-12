@@ -1,8 +1,7 @@
 from pathlib import Path
 from random import randbytes
 
-from viper_orchestrator.config import MEDIA_ROOT
-
+from viper_orchestrator.config import MEDIA_ROOT, TEST
 
 TEST_SECRET_KEY = "11111"
 PROD_SECRET_KEY_PATH = Path(__file__).resolve().parent / "secrets/SECRET_KEY"
@@ -17,12 +16,14 @@ def get_prod_secret_key():
     try:
         return read_prod_secret_key()
     except FileNotFoundError:
+        PROD_SECRET_KEY_PATH.parent.mkdir(exist_ok=True)
         with PROD_SECRET_KEY_PATH.open("w") as stream:
             stream.write(str(randbytes(20)))
         return read_prod_secret_key()
 
 
 PROD_SECRET_KEY = get_prod_secret_key()
+SECRET_KEY = TEST_SECRET_KEY if TEST is True else PROD_SECRET_KEY
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -72,11 +73,13 @@ TEMPLATES = [
 WSGI_APPLICATION = "visintent.wsgi.application"
 
 
-# TODO: will use postgres later in dev
+# note that this doesn't actually matter at all because we're not using the
+# django ORM or IAM or anything, it's just to keep django from whining about
+# not having a db
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": Path(__file__).parent.parent / "db.sqlite3",
     }
 }
 
@@ -105,7 +108,7 @@ USE_TZ = True
 
 MEDIA_URL = "media/"
 
-STATIC_URL = "static/"
+STATIC_URL = "media/assets/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 STATICFILES_DIRS = [Path(__file__).parent.parent / "static_dev"]
