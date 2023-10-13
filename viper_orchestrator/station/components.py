@@ -79,7 +79,7 @@ def process_image_instruction(note: UnpackedParameter) -> pro.Action:
     return make_instruction("do", action=action)
 
 
-def thumbnail_instruction(note: Mapping[str]) -> pro.Action:
+def thumbnail_instruction(note: Mapping[str, Any]) -> pro.Action:
     """
     convert a report of a newly-published image into an Action message
     specifying a thumbnailing task.

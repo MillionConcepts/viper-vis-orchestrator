@@ -19,7 +19,7 @@ from hostess.station.bases import NoMatch
 from hostess.utilities import curry
 
 IMAGERECORD_COLUMNS = frozenset(c.name for c in ImageRecord.__table__.columns)
-UnpackedParameter = Mapping[str]
+UnpackedParameter = Mapping[str, Any]
 
 
 def unpack_parameter_value(value: ParameterValue) -> UnpackedParameter:

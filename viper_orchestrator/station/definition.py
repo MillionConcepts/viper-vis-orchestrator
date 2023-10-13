@@ -57,7 +57,7 @@ def launch_delegates(
     """defines, launches, and queues config instructions for delegates"""
     thumbnail_watch_launch_spec = {
         # sensor that watches a directory on the filesystem
-        "elements": [("hostess.station.actors", "DirWatch")],
+        "elements": [("hostess.station.components", "DirWatch")],
     }
     thumbnail_watch_config_spec = {
         # what directory shall we watch?
@@ -73,7 +73,9 @@ def launch_delegates(
     # create_image.create()-handling delegate
     station.launch_delegate(
         "image_processor",
-        elements=(("viper_orchestrator.station.actors", "ImageProcessor"),),
+        elements=(
+            ("viper_orchestrator.station.components", "ImageProcessor"),
+        ),
         **DELKWARGS,
     )
     # to work correctly in mock mode, the parameter-watching delegates must
@@ -89,16 +91,17 @@ def launch_delegates(
     # image parameter-watching delegate.
     station.launch_delegate(
         "image_watcher",
-        elements=(("viper_orchestrator.station.actors", "ImageSensor"),),
+        elements=(("viper_orchestrator.station.components", "ImageSensor"),),
         **subscriber_kwargs
     )
     # light state parameter-watching and handling delegate.
     # unlike images, we encapsulate handling for these parameters in a single
     # Delegate (and a single Sensor attached to that Delegate). see the
-    # docstring of viper_orchestrator.station.actors.LightSensor for rationale.
+    # docstring of viper_orchestrator.station.components.LightSensor for
+    # rationale.
     station.launch_delegate(
         "light_watcher",
-        elements=(("viper_orchestrator.station.actors", "LightSensor"),),
+        elements=(("viper_orchestrator.station.components", "LightSensor"),),
         **subscriber_kwargs
     )
     # tiff-write-watching delegate. this watches the filesystem for writes
