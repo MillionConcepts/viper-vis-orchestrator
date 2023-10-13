@@ -13,7 +13,7 @@ from vipersci.vis.db.ldst_verification import LDSTVerification
 from vipersci.vis.db.light_records import LightRecord
 
 # are we running in test mode? primarily affects file write behavior
-TEST = False
+TEST = True
 
 # yamcs parameters we know we care about at the moment
 PARAMETERS = (

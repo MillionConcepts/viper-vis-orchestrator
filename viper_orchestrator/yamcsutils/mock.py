@@ -83,7 +83,7 @@ class MockServer:
             if self.mode in ("replacement", "no_replacement"):
                 shuffle(self._pickable_indices)
             if self.mode in ("no_replacement", "sequential"):
-                ix = viper_orchestrator.station.utilities.popleft()
+                ix = self._pickable_indices.popleft()
             else:
                 ix = self._pickable_indices[0]
         try:

@@ -150,7 +150,7 @@ make_random_pl_submission(lossies[2].product_id)
 station = vsd.create_station()
 station.start()
 try:
-    vsd.launch_delegates(station)
+    vsd.launch_delegates(station, mock=True, update_interval=0.1)
     time.sleep(0.5)  # let config propagate
     SERVER = make_mock_server(
         station.get_delegate(

@@ -1,6 +1,7 @@
 """high-level definition of the orchestrator application."""
 from pathlib import Path
 import random
+from typing import Literal
 
 from hostess.station.actors import InstructionFromInfo
 from hostess.station.station import Station
@@ -15,10 +16,6 @@ from viper_orchestrator.station.components import (
     process_image_instruction,
     thumbnail_instruction,
 )
-
-
-# basic settings for delegates in this application
-DELKWARGS = {"update_interval": 0.5, "context": "local", "n_threads": 4}
 
 
 def create_station():
@@ -52,9 +49,17 @@ def launch_delegates(
     station: Station,
     mock: bool = False,
     processor_path: tuple[str, str] = ("viper", "realtime"),
-    yamcs_url="localhost:8090/yamcs"
+    yamcs_url="localhost:8090/yamcs",
+    update_interval: float = 0.5,
+    context: Literal["local", "subprocess", "daemon"] = "daemon",
+    n_threads: int = 4
 ) -> None:
     """defines, launches, and queues config instructions for delegates"""
+    delkwargs = {
+        "update_interval": update_interval,
+        "context": context,
+        "n_threads": n_threads
+    }
     thumbnail_watch_launch_spec = {
         # sensor that watches a directory on the filesystem
         "elements": [("hostess.station.components", "DirWatch")],
@@ -76,7 +81,7 @@ def launch_delegates(
         elements=(
             ("viper_orchestrator.station.components", "ImageProcessor"),
         ),
-        **DELKWARGS,
+        **delkwargs,
     )
     # to work correctly in mock mode, the parameter-watching delegates must
     # always be in local context so that they can interact with the
@@ -85,9 +90,9 @@ def launch_delegates(
     # also note that the server url and processor path are harmlessly ignored
     # in mock mode.
     if mock is True:
-        subscriber_kwargs = DELKWARGS | {'context': 'local'}
+        subscriber_kwargs = delkwargs | {'context': 'local'}
     else:
-        subscriber_kwargs = DELKWARGS
+        subscriber_kwargs = delkwargs
     # image parameter-watching delegate.
     station.launch_delegate(
         "image_watcher",
@@ -107,10 +112,10 @@ def launch_delegates(
     # tiff-write-watching delegate. this watches the filesystem for writes
     # performed in the create_image.create() workflow, not yamcs.
     station.launch_delegate(
-        "thumbnail_watcher", **thumbnail_watch_launch_spec, **DELKWARGS
+        "thumbnail_watcher", **thumbnail_watch_launch_spec, **delkwargs
     )
     # thumbnail-making delegate
-    station.launch_delegate("thumbnail", **thumbnail_launch_spec, **DELKWARGS)
+    station.launch_delegate("thumbnail", **thumbnail_launch_spec, **delkwargs)
     # delegate configuration
     station.set_delegate_properties(
         "image_watcher",

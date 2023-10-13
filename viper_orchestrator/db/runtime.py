@@ -5,6 +5,7 @@ initialization and connection workflow. This module's ENGINE member is
 intended for use as a database connection.
 """
 import atexit
+import csv
 import re
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from hostess.subutils import Viewer
 from hostess.utilities import timeout_factory
 from viper_orchestrator.config import BASES, DB_PATH
 from vipersci.vis.db.image_tags import ImageTag, taglist
+from vipersci.vis.db.ldst import LDST
 
 MANAGED_PROCESSES = []
 
@@ -136,11 +138,11 @@ for base in BASES:
     base.metadata.create_all(ENGINE)
 
 
-# initialize pseudo-enum from configuration file
-# NOTE: semi-vendored from init functions in science repo. it must exactly copy
+# initialize pseudo-enums from configuration file
+# NOTE: semi-vendored from init function in science repo. it must exactly copy
 # this 'official' code and should not be changed.
 # TODO: add license note
-def set_up_tags():
+def set_up_tags_and_hypotheses():
     with Session(ENGINE) as session:
         # Establish image_tags
         scalars = session.scalars(select(ImageTag))
@@ -163,6 +165,38 @@ def set_up_tags():
                 f"{[r.name for r in results]}, but should "
                 f"contain these {len(taglist)} entries: {taglist}"
             )
+        # TODO: this probably isn't how they're going to be initialized later
+        ldst_file = Path(__file__).parent / "ldst_data.csv"
+        ldst_rows = []
+        with ldst_file.open() as lf:
+            ldst_text = lf.readlines()
+        reader = csv.reader(ldst_text, delimiter=";")
+        next(reader)  # Skip first line.
+        next(reader)  # Skip second line.
+        for row in reader:
+            ldst_rows.append(row)
+        scalars = session.scalars(select(LDST))
+        results = scalars.all()
+        if len(results) == 0:
+            session.execute(
+                insert(LDST),
+                [{"id": x, "description": y} for (x, y) in ldst_rows]
+            )
+            session.commit()
+        elif len(results) == len(ldst_rows):
+            for i, row in enumerate(results):
+                if row.id != ldst_rows[i][0] or row.description != \
+                        ldst_rows[i][1]:
+                    raise ValueError(
+                        f"Row {i} in the database has these values: {row} "
+                        f"but should have {ldst_rows[i]}"
+                    )
+        else:
+            raise ValueError(
+                f"The {LDST.__tablename__} table already contains the "
+                f"following {len(results)} entries: {results}, but should "
+                f"contain {len(ldst_rows)} entries."
+            )
 
 
-set_up_tags()
+set_up_tags_and_hypotheses()

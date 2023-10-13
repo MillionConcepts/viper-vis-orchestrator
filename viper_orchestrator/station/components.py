@@ -257,6 +257,7 @@ class ParameterSensor(Sensor, ABC):
         self._ctx, self._client, self._processor = None, None, None
         self._initialization_status = "uninitialized"
 
+
     def checker(self, _, **__) -> tuple[None, deque]:
         """curried pop-from-cache function"""
         results = popleft(self.cache)
