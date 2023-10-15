@@ -13,25 +13,39 @@ from viper_orchestrator.db.table_utils import image_request_capturesets
 from viper_orchestrator.visintent.tracking.forms import RequestForm
 
 
-def _construct_associations(association_data, association_rules, row):
-    associations = []
-    for k, v in association_data.items():
-        rules = association_rules[k]
-        junc, pivot = rules['junc'], rules['pivot']
-        for assoc in v:
-            try:
-                with OSession() as session:
-                    selector = select(junc).where(
-                        getattr(junc, pivot[0]) == getattr(row, pivot[1])
+def _construct_associations(association_data, form, row):
+    associations, removed = [], []
+    with OSession() as session:
+        for field, rules in form.associated_tables.items():
+            setattr(form, rules['pivot'][1], getattr(row, rules['pivot'][1]))
+            existing = form.get_associations(rules, session)
+            relations = {i: r for i, r in enumerate(association_data[field])}
+            for junc_row in existing:
+                matches = [
+                    k for k, v in relations.items()
+                    if v == getattr(junc_row, rules['junc_pivot'][0])
+                ]
+                if len(matches) == 0:
+                    removed.append(junc_row)
+                elif len(matches) == 1:
+                    raise InvalidRequestError(
+                        "Only one matching row is expected here; table "
+                        "structure appears invalid"
                     )
-                    association = session.scalars(selector).one()
-            except (AssertionError, InvalidRequestError):
-                association = rules['junc']()
-            for attr, val in assoc.items():
-                setattr(association, attr, val)
-            setattr(association, rules['self_attr'], row)
-            associations.append(association)
-    return associations
+                else:
+                    match = relations.pop(matches[0])
+                    for attr, val in match.items():
+                        setattr(junc_row, attr, val)
+                    associations.append(junc_row)
+            # leftovers are new relations
+            for v in relations.values():
+                junc_row = rules['junc']()
+                for attr, val in v.items():
+                    setattr(junc_row, attr, val)
+                # this should already be set on existing junc table rows
+                setattr(junc_row, rules['self_attr'], row)
+                associations.append(junc_row)
+    return associations, removed
 
 
 def _separate_associations(form):
@@ -107,10 +121,12 @@ def _create_or_update_entry(
         row = callobj(**(keyfilter(lambda attr: attr in valid, data)))
     row.request_time = form.request_time
     if len(association_data) > 0:
-        associations = _construct_associations(
-            association_data, form.associated_tables, row
+        associations, removed = _construct_associations(
+            association_data, form, row
         )
     else:
-        associations = []
+        associations, removed = [], []
     session.add_all([row, *associations])
+    for r in removed:
+        session.delete(r)
     return row, associations

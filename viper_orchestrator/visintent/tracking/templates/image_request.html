@@ -69,15 +69,19 @@
      * @param {HTMLOptionsCollection} target
      */
     const updateOptionsFromSelected = function(source, target) {
+        const new_options = [];
         Object.values(source).forEach(function(option) {
+            console.log(option.value)
             let existing = getEquivalentOption(option, target);
             if (option.selected && (existing === null)) {
-                target.add(new Option(option.text, option.value))
+                new_options.push(new Option(option.text, option.value))
             }
-            else if (!option.selected && (existing !== null)) {
-                target.remove(existing)
+            else if (option.selected && (existing !== null)) {
+                new_options.push(existing)
             }
         });
+        Object.values(target).forEach(o => target.remove(o))
+        new_options.sort().forEach(o => target.add(o))
     }
     const updateCriticalOptions = function() {
         return updateOptionsFromSelected(ldstOptions, ldstCriticalOptions)

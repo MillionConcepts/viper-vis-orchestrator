@@ -91,6 +91,12 @@ class RequestForm(forms.Form):
                 )
         elif request_id is not None:
             self.id = int(request_id)
+        for table, rules in self.associated_tables.items():
+            if hasattr(self, rules['pivot'][1]):
+                with OSession() as session:
+                    existing = self.get_associations(rules, session)
+                if len(existing) != 0:
+                    getattr(self, f"_populate_from_{table}")(existing)
         self.pano_only_fields = [
             field_name
             for field_name, field in self.fields.items()
@@ -323,10 +329,30 @@ class RequestForm(forms.Form):
         return {
             'junc_image_request_ldst': {
                 'junc': JuncImageRequestLDST,
+                'target': LDST,
                 'pivot': ('image_request_id', 'id'),
+                'junc_pivot': ('ldst', 'id'),
                 'self_attr': 'image_request',
             }
         }
+
+    def get_associations(self, rules, session):
+        junc, pivot = rules['junc'], rules['pivot']
+        exist_selector = select(junc).where(
+            getattr(junc, pivot[0]) == getattr(self, pivot[1])
+        )
+        existing = session.scalars(exist_selector).all()
+        return existing
+
+    def _populate_from_junc_image_request_ldst(self, junc_rows):
+        ldst_hypotheses, critical = [], []
+        for row in junc_rows:
+            ldst_hypotheses.append(row.ldst_id)
+            if row.critical is True:
+                critical.append(row.ldst_id)
+        self.fields['ldst_hypotheses'].initial = ldst_hypotheses
+        self.fields['critical'].choices = [(h, h) for h in ldst_hypotheses]
+        self.fields['critical'].initial = critical
 
     def _construct_associations(self):
         """construct JuncImageRequestLDST attrs from form content"""
