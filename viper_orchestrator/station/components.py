@@ -85,15 +85,35 @@ def thumbnail_instruction(note: Mapping[str, Any]) -> pro.Action:
     specifying a thumbnailing task.
     """
     action = make_function_call_action(
-        func="thumbnail_16bit_tif",
+        func="convert_16bit_tif",
         module="viper_orchestrator.station.utilities",
         kwargs={
             "inpath": Path(note["content"]),
             "outpath": BROWSE_ROOT
             / Path(note["content"]).name.replace(".tif", "_thumb.jpg"),
+            "size": (240, 240)
         },
         context="process",
-        description={"title": Path(note["content"]).name},
+        description={"title": f'thumbnail {Path(note["content"]).name}'},
+    )
+    return make_instruction("do", action=action)
+
+
+def jpeg_instruction(note: Mapping[str, Any]) -> pro.Action:
+    """
+    convert a report of a newly-published image into an Action message
+    specifying a full-res JPEG conversion task (intended for web display).
+    """
+    action = make_function_call_action(
+        func="convert_16bit_tif",
+        module="viper_orchestrator.station.utilities",
+        kwargs={
+            "inpath": Path(note["content"]),
+            "outpath": BROWSE_ROOT
+            / Path(note["content"]).name.replace(".tif", "_browse.jpg"),
+        },
+        context="process",
+        description={"title": f'make JPEG of {Path(note["content"]).name}'},
     )
     return make_instruction("do", action=action)
 

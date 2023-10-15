@@ -4,7 +4,7 @@ import re
 from collections import deque
 from io import BytesIO
 from pathlib import Path
-from typing import Mapping, MutableSequence, Any
+from typing import Mapping, MutableSequence, Any, Optional
 
 import dateutil.parser
 import numpy as np
@@ -49,17 +49,21 @@ def unpack_parameters(messages: ParameterData) -> list[UnpackedParameter]:
     return [unpack_parameter_value(value) for value in messages.parameters]
 
 
-def thumbnail_16bit_tif(
-    inpath: Path, outpath: Path, size: tuple[int, int] = (240, 240)
+def convert_16bit_tif(
+    inpath: Path,
+    outpath: Path,
+    size: Optional[tuple[int, int]] = None
 ):
     """
     open a 16-bit tiff file, make a thumbnail from it, write it back to disk.
+    optionally also thumbnail it.
     """
     # noinspection PyTypeChecker
     im = np.asarray(Image.open(inpath))
     # PIL's built-in conversion for 16-bit integer images does bad things
     im = Image.fromarray(np.floor(im / 65531 * 255).astype(np.uint8))
-    im.thumbnail(size)
+    if size is not None:
+        im.thumbnail(size)
     im.save(outpath)
 
 

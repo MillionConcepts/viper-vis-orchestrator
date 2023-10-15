@@ -3,32 +3,17 @@
 <body>
 {% include "layouts/nav.html" %}
 <div>
-    <table id="image-table">
-    <thead>
-    <tr>
-        <th>pid</th>
-        <th>start time</th>
-        <th>creation time</th>
-        <th>capture id</th>
-        <th>instrument</th>
-        <th>thumbnail</th>
-        <th>image</th>
-        <th>label</th>
-        <th>request/intent</th>
-    </tr>
-    </thead>
-    {# TODO, maybe: replace this with js #}
+    <table id="image-table" style="padding-left:10vw">
     {% for record in records %}
         <tr>
-            <td>{{ record.product_id }}</td>
-            <td>{{ record.start_time }}</td>
-            <td>{{ record.creation_time }}</td>
-            <td>{{ record.capture_id }}</td>
-            <td>{{ record.instrument }}</td>
-            <td><img src="{{ record.thumbnail_url }}" alt="thumbnail for {{ record.product_id }}"></td>
-            <td><a href="{{ record.image_url }}">image</a></td>
-            <td><a href="{{ record.label_url }}">label</a></td>
-            <td><a href={{ record.image_request_url }}>{{ record.image_request_name}}</a></td>
+            <td>
+                <img src="{{ record.thumbnail_url }}"
+                     alt="thumbnail for {{ record.product_id }}"
+                     style="height:5rem;width:5rem;padding-right:1rem">
+            </td>
+            <td style="font-size:24px">
+                <a href="/{{ record.product_id }}">{{ record.product_id }}<a>
+            </td>
         </tr>
     {% endfor %}
     </table>

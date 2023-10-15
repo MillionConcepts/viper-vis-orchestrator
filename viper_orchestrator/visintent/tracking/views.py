@@ -1,5 +1,6 @@
 """django view functions and helpers."""
 import datetime as dt
+import json
 import shutil
 from typing import Union
 
@@ -9,19 +10,25 @@ from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
 from sqlalchemy import select
+from sqlalchemy.exc import InvalidRequestError
 
+from viper_orchestrator.config import PRODUCT_ROOT, MEDIA_ROOT
 from viper_orchestrator.db import OSession
 from viper_orchestrator.db.table_utils import (
-    image_request_capturesets, get_capture_ids, get_record_ids,
-    records_from_capture_ids
+    image_request_capturesets,
+    get_capture_ids,
+    get_record_ids,
+    records_from_capture_ids,
 )
 from viper_orchestrator.visintent.tracking.db_utils import (
-    _create_or_update_entry
+    _create_or_update_entry,
 )
 from viper_orchestrator.visintent.tracking.forms import (
     RequestForm,
     PLSubmission,
-    BadURLError, AlreadyLosslessError, AlreadyDeletedError,
+    BadURLError,
+    AlreadyLosslessError,
+    AlreadyDeletedError,
 )
 from viper_orchestrator.visintent.tracking.forms import (
     request_supplementary_path,
@@ -32,6 +39,42 @@ from viper_orchestrator.visintent.tracking.tables import (
 )
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest
+
+
+@never_cache
+def image(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
+    pid = request.path.strip("/")
+    with OSession() as session:
+        try:
+            record = session.scalars(
+                select(ImageRecord).where(ImageRecord._pid == pid)
+            ).one()
+        except InvalidRequestError:
+            return HttpResponse(
+                f"Sorry, no images exist in the database with product id "
+                f"{pid}.",
+                status=404,
+            )
+        label_path = (
+            MEDIA_ROOT
+            / "products/data"
+            / record.file_path.replace(".tif", ".json")
+        )
+        with label_path.open() as stream:
+            metadata = json.load(stream)
+        return render(
+            request,
+            "image.html",
+            {
+                "browse_url": (
+                    "media/products/browse/"
+                    + record.file_path.replace(".tif", "_browse.jpg")
+                ),
+                "image_url": record.file_path,
+                "metadata": metadata
+                # TODO: verification link, blah blah blah
+            },
+        )
 
 
 @never_cache
@@ -46,8 +89,7 @@ def imagerequest(request: WSGIRequest) -> HttpResponse:
     showslice = (bound["need_360"]() is True) and showpano
     if form.id is None and editing is False:
         return HttpResponse(
-            "cannot generate view for nonexistent image request",
-            status=400
+            "cannot generate view for nonexistent image request", status=400
         )
     filename, file_url = form.filepaths()
     try:
@@ -60,7 +102,7 @@ def imagerequest(request: WSGIRequest) -> HttpResponse:
                 "showslice": showslice,
                 "filename": filename,
                 "file_url": file_url,
-                "pagetitle": "Image Request"
+                "pagetitle": "Image Request",
             },
         )
     except BadURLError as bue:
@@ -69,7 +111,7 @@ def imagerequest(request: WSGIRequest) -> HttpResponse:
 
 @never_cache
 def submitrequest(
-    request: WSGIRequest
+    request: WSGIRequest,
 ) -> Union[HttpResponse, HttpResponseRedirect]:
     """
     handle request submission and redirect to errors or success notification
@@ -90,8 +132,11 @@ def submitrequest(
                 session,
                 pivot,
                 extra_attrs=(
-                    "imaging_mode", "camera_type", "hazcams", "generalities"
-                )
+                    "imaging_mode",
+                    "camera_type",
+                    "hazcams",
+                    "generalities",
+                ),
             )
             session.commit()
         except ValueError as ve:
@@ -123,7 +168,7 @@ def requestlist(request):
                     f"/imagerequest?request_id={row.id}&editing=false"
                 ),
                 "request_id": row.id,
-                "pagetitle": "Image Request List"
+                "pagetitle": "Image Request List",
             }
             records.append(record)
         # TODO: paginate, preferably configurably
@@ -153,7 +198,7 @@ def plrequest(request):
     return render(
         request,
         "add_to_pl.html",
-        {"form": form, "pagetitle": "Protected List Request"}
+        {"form": form, "pagetitle": "Protected List Request"},
     )
 
 
@@ -185,7 +230,7 @@ def pllist(request):
             "rationale": entry.rationale,
             "ccu": entry.ccu,
             "pl_url": f"/plrequest?pl-id={entry.pl_id}",
-            "pagetitle": "Protected List Display"
+            "pagetitle": "Protected List Display",
         }
         records.append(record)
     # TODO: paginate, preferably configurably
@@ -242,7 +287,7 @@ def imagelist(request):
             "instrument": row.instrument_name,
             "image_url": "media/products/data/" + row.file_path,
             "label_url": "media/products/data/"
-                         + row.file_path.replace("tif", "json"),
+            + row.file_path.replace("tif", "json"),
             "thumbnail_url": "media/products/browse/"
             + row.file_path.replace(".tif", "_thumb.jpg"),
             "image_request_name": "create",
@@ -260,13 +305,13 @@ def imagelist(request):
     return render(
         request,
         "image_list.html",
-        {"records": records, "pagetitle": "Image List"}
+        {"records": records, "pagetitle": "Image List"},
     )
 
 
 @never_cache
 def assign_records_from_capture_ids(
-    request: WSGIRequest
+    request: WSGIRequest,
 ) -> Union[HttpResponse, HttpResponseRedirect]:
     """(re)assign capture ids to an image request"""
     # TODO: better error messages

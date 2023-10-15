@@ -15,6 +15,7 @@ from viper_orchestrator.station.components import (
     InsertIntoDatabase,
     process_image_instruction,
     thumbnail_instruction,
+    jpeg_instruction,
 )
 
 
@@ -33,15 +34,24 @@ def create_station():
     # Actor that performs database inserts for SQLAlchemy DeclarativeBase
     # objects sent by Delegates in completion or info Messages
     station.add_element(InsertIntoDatabase)
-    # add an Actor that watches to see when the image_processor Delegate writes
-    # a new TIFF file to disk
-    thumbnail_checker = InstructionFromInfo
-    station.add_element(thumbnail_checker, name="thumbnail")
-    # add an Actor that creates instructions to make thumbnails when we hear
-    # about a new TIFF file
+    # add Actors that create instructions to make thumbnails and full-res
+    # JPEGs when we hear about a new TIFF file
+    station.add_element(InstructionFromInfo, name="thumbnail")
+    station.add_element(InstructionFromInfo, name="browse")
+    station.browse_instruction_maker = jpeg_instruction
     station.thumbnail_instruction_maker = thumbnail_instruction
-    station.thumbnail_criteria = [lambda n: Path(n["content"]).is_file()]
-    station.thumbnail_target_name = "thumbnail"
+    browse_attrs = {
+        "criteria": [
+            lambda n: (
+                Path(n["content"]).is_file()
+                and Path(n["content"]).name.endswith("tif")
+            )
+        ],
+        "target_name": "browsemaker",
+    }
+    for proc in ("browse", "thumbnail"):
+        for attr, val in browse_attrs.items():
+            setattr(station, f"{proc}_{attr}", val)
     return station
 
 
@@ -52,13 +62,13 @@ def launch_delegates(
     yamcs_url="localhost:8090/yamcs",
     update_interval: float = 0.5,
     context: Literal["local", "subprocess", "daemon"] = "daemon",
-    n_threads: int = 4
+    n_threads: int = 4,
 ) -> None:
     """defines, launches, and queues config instructions for delegates"""
     delkwargs = {
         "update_interval": update_interval,
         "context": context,
-        "n_threads": n_threads
+        "n_threads": n_threads,
     }
     thumbnail_watch_launch_spec = {
         # sensor that watches a directory on the filesystem
@@ -70,9 +80,9 @@ def launch_delegates(
         # what filename patterns are we watching for?
         "dirwatch_patterns": (r".*\.tif",),
     }
-    # thumbnail making is handled by a generic Actor that calls plain
+    # browse making is handled by a generic Actor that calls plain
     # functions; the details are specified in Instructions from the Station
-    thumbnail_launch_spec = {
+    browse_launch_spec = {
         "elements": [("hostess.station.actors", "FuncCaller")]
     }
     # create_image.create()-handling delegate
@@ -90,14 +100,14 @@ def launch_delegates(
     # also note that the server url and processor path are harmlessly ignored
     # in mock mode.
     if mock is True:
-        subscriber_kwargs = delkwargs | {'context': 'local'}
+        subscriber_kwargs = delkwargs | {"context": "local"}
     else:
         subscriber_kwargs = delkwargs
     # image parameter-watching delegate.
     station.launch_delegate(
         "image_watcher",
         elements=(("viper_orchestrator.station.components", "ImageSensor"),),
-        **subscriber_kwargs
+        **subscriber_kwargs,
     )
     # light state parameter-watching and handling delegate.
     # unlike images, we encapsulate handling for these parameters in a single
@@ -107,7 +117,7 @@ def launch_delegates(
     station.launch_delegate(
         "light_watcher",
         elements=(("viper_orchestrator.station.components", "LightSensor"),),
-        **subscriber_kwargs
+        **subscriber_kwargs,
     )
     # tiff-write-watching delegate. this watches the filesystem for writes
     # performed in the create_image.create() workflow, not yamcs.
@@ -115,14 +125,14 @@ def launch_delegates(
         "thumbnail_watcher", **thumbnail_watch_launch_spec, **delkwargs
     )
     # thumbnail-making delegate
-    station.launch_delegate("thumbnail", **thumbnail_launch_spec, **delkwargs)
+    station.launch_delegate("browsemaker", **browse_launch_spec, **delkwargs)
     # delegate configuration
     station.set_delegate_properties(
         "image_watcher",
         image_watch_mock=mock,
         image_watch_parameters=[p for p in PARAMETERS if "Images" in p],
         image_watch_processor_path=processor_path,
-        image_watch_url=yamcs_url
+        image_watch_url=yamcs_url,
     )
     station.set_delegate_properties(
         "light_watcher",

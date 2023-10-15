@@ -104,7 +104,7 @@ try:
         )
 
     while (
-            (n_completed < n_products * 2)
+            (n_completed < n_products * 3)
             or (n_incomplete() > 0)
             or (n_recs_made < n_recs)
     ):

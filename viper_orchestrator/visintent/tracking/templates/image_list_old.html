@@ -1,0 +1,37 @@
+{% load static %}
+{% include "layouts/head.html" %}
+<body>
+{% include "layouts/nav.html" %}
+<div>
+    <table id="image-table">
+    <thead>
+    <tr>
+        <th>pid</th>
+        <th>start time</th>
+        <th>creation time</th>
+        <th>capture id</th>
+        <th>instrument</th>
+        <th>thumbnail</th>
+        <th>image</th>
+        <th>label</th>
+        <th>request/intent</th>
+    </tr>
+    </thead>
+    {# TODO, maybe: replace this with js #}
+    {% for record in records %}
+        <tr>
+            <td>{{ record.product_id }}</td>
+            <td>{{ record.start_time }}</td>
+            <td>{{ record.creation_time }}</td>
+            <td>{{ record.capture_id }}</td>
+            <td>{{ record.instrument }}</td>
+            <td><img src="{{ record.thumbnail_url }}" alt="thumbnail for {{ record.product_id }}"></td>
+            <td><a href="{{ record.image_url }}">image</a></td>
+            <td><a href="{{ record.label_url }}">label</a></td>
+            <td><a href={{ record.image_request_url }}>{{ record.image_request_name}}</a></td>
+        </tr>
+    {% endfor %}
+    </table>
+</div>
+</body>
+</html>

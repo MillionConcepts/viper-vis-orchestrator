@@ -1,9 +1,9 @@
 """Django url routing configuration"""
 
-from django.urls import path
-
+from django.urls import path, re_path
 
 from viper_orchestrator.visintent.tracking import views
+from vipersci.pds.pid import vis_pid_re
 
 urlpatterns = [
     path("imagerequest", views.imagerequest, name="imagerequest"),
@@ -21,4 +21,5 @@ urlpatterns = [
     path("pllist", views.pllist, name="protectedlist"),
     path("", views.pages, name="landing"),
     path("pages", views.pages, name="pages"),
+    re_path(vis_pid_re.pattern, views.image, name="image")
 ]
