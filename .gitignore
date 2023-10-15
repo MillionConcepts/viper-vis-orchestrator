@@ -168,6 +168,7 @@ viper_orchestrator/media/
 build_9*/
 *.pkl
 /media
+ldst_data.csv
 
 # web application secrets
 /viper_orchestrator/visintent/visintent/secrets/

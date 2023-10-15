@@ -3,12 +3,48 @@ from typing import Collection, Optional
 from cytoolz import keyfilter
 from django.forms import Form
 from sqlalchemy import select
-from sqlalchemy.exc import NoResultFound
+from sqlalchemy.exc import NoResultFound, InvalidRequestError
 
 from func import get_argnames
 from sqlalchemy.orm import Session, DeclarativeBase
+
+from viper_orchestrator.db import OSession
 from viper_orchestrator.db.table_utils import image_request_capturesets
 from viper_orchestrator.visintent.tracking.forms import RequestForm
+
+
+def _construct_associations(association_data, association_rules, row):
+    associations = []
+    for k, v in association_data.items():
+        rules = association_rules[k]
+        junc, pivot = rules['junc'], rules['pivot']
+        for assoc in v:
+            try:
+                with OSession() as session:
+                    selector = select(junc).where(
+                        getattr(junc, pivot[0]) == getattr(row, pivot[1])
+                    )
+                    association = session.scalars(selector).one()
+            except (AssertionError, InvalidRequestError):
+                association = rules['junc']()
+            for attr, val in assoc.items():
+                setattr(association, attr, val)
+            setattr(association, rules['self_attr'], row)
+            associations.append(association)
+    return associations
+
+
+def _separate_associations(form):
+    row_data, association_data = {}, {}
+    for k, v in form.cleaned_data.items():
+        if (
+            hasattr(form, "associated_tables")
+            and form.associated_tables.get(k) is not None
+        ):
+            association_data[k] = v
+        else:
+            row_data[k] = v
+    return row_data, association_data
 
 
 # TODO: excessively baroque
@@ -18,11 +54,16 @@ def _create_or_update_entry(
     pivot: str,
     constructor_name: str = None,
     extra_attrs: Optional[Collection[str]] = None,
-) -> DeclarativeBase:
+) -> tuple[DeclarativeBase, list[DeclarativeBase]]:
     """
     helper function for processing data from bound Forms into DeclarativeBase
     objects
     """
+    data, association_data = _separate_associations(form)
+    if extra_attrs is not None:
+        data |= {
+            attr: getattr(form, attr) for attr in extra_attrs
+        }
     try:
         # if this is an existing entry -- as determined by the
         # specified pivot field, which should have been extensively validated
@@ -32,6 +73,7 @@ def _create_or_update_entry(
         else:
             ref = form.cleaned_data[pivot]
         assert ref not in (None, "")
+        # TODO: workflow no longer requires capturesets. cut it.
         # capture_id has been cut from ImageRequest so we have to explicitly
         # generate capturesets here. a little ugly but no alternative.
         # TODO, maybe: refactor this function as it is now handling too many
@@ -49,16 +91,10 @@ def _create_or_update_entry(
             getattr(form.table_class, pivot) == ref
         )
         row = session.scalars(selector).one()
-        for k, v in form.cleaned_data.items():
+        for k, v in data.items():
             setattr(row, k, v)
-        row.request_time = form.request_time
     except (NoResultFound, AssertionError):
-        constructor_kwargs = form.cleaned_data
-        if extra_attrs is not None:
-            constructor_kwargs |= {
-                attr: getattr(form, attr) for attr in extra_attrs
-            }
-        constructor_kwargs |= {pivot: getattr(form, pivot)}
+        data |= {pivot: getattr(form, pivot)}
         # we might have form fields that aren't valid arguments
         # to the (possibly very complicated!) associated DeclarativeBase
         # (table entry) class constructor. Try to automatically filter them.
@@ -68,7 +104,13 @@ def _create_or_update_entry(
             valid.update(get_argnames(callobj))
         else:
             callobj = form.table_class
-        row = callobj(**(keyfilter(lambda k: k in valid, constructor_kwargs)))
-        row.request_time = form.request_time
-        session.add(row)
-    return row
+        row = callobj(**(keyfilter(lambda attr: attr in valid, data)))
+    row.request_time = form.request_time
+    if len(association_data) > 0:
+        associations = _construct_associations(
+            association_data, form.associated_tables, row
+        )
+    else:
+        associations = []
+    session.add_all([row, *associations])
+    return row, associations

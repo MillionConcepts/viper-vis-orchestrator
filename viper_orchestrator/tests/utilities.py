@@ -54,7 +54,12 @@ def randomize_form(form: Form, skipfields: Collection[str] = ()):
                 continue
             form.data[name] = field.initial
         elif isinstance(field, (ChoiceField, MultipleChoiceField)):
-            form.data[name] = random.choice(field.choices)[0]
+            form.data.setlist(
+                name,
+                random.choices(
+                    [c[0] for c in field.choices], k=random.randint(1, 2)
+                )
+            )
         elif isinstance(field, BooleanField):
             form.data[name] = random.choice((True, False))
         elif isinstance(field, IntegerField):

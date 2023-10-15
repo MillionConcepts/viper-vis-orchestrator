@@ -19,7 +19,7 @@
         <h2>editing image request</h2>
 {#        <p class="placeholder-text">placeholder: a way to delete me</p>#}
         <label for="hidden-request-id-input">
-            <input type="number" style="display: none;" id="hidden-request-id-input" name="request_id" value={{ form.request_id }}>
+            <input type="number" style="display: none;" id="hidden-request-id-input" name="request_id" value={{ form.id }}>
         </label>
     {% else %}
         <h2>new image request</h2>
@@ -47,10 +47,41 @@
     </div>
 </form>
 <script>
+    const ldstSelect = document.getElementById('ldst-elements');
+    const ldstCritical = document.getElementById('ldst-critical');
+    const ldstOptions = ldstSelect.options
+    const ldstCriticalOptions = ldstCritical.options
     const cameraRequest = document.getElementById('camera-request');
     const needs360 = document.getElementById('need-360');
     const panoOnlyInputs = document.getElementsByClassName('pano-only');
     const sliceInputs = document.getElementsByClassName('slice-field');
+    /**
+     * @param {HTMLOptionElement} option
+     * @param {HTMLOptionsCollection} options
+     */
+    const getEquivalentOption = function(option, options) {
+        return Object.values(options).find(function(opt) {
+            return opt.text === option.text && opt.value === option.value
+        }) || null;
+    }
+    /**
+     * @param {HTMLOptionsCollection} source
+     * @param {HTMLOptionsCollection} target
+     */
+    const updateOptionsFromSelected = function(source, target) {
+        Object.values(source).forEach(function(option) {
+            let existing = getEquivalentOption(option, target);
+            if (option.selected && (existing === null)) {
+                target.add(new Option(option.text, option.value))
+            }
+            else if (!option.selected && (existing !== null)) {
+                target.remove(existing)
+            }
+        });
+    }
+    const updateCriticalOptions = function() {
+        return updateOptionsFromSelected(ldstOptions, ldstCriticalOptions)
+    }
     const togglePanoVisibility = function() {
         const display = (cameraRequest.value === 'navcam_panorama') ? 'block' : 'none';
         Array.from(panoOnlyInputs).forEach((input) => {input.style.display = display})
@@ -61,6 +92,7 @@
         const display = pano && slice ? 'block' : 'none'
         Array.from(sliceInputs).forEach((input) => {input.style.display = display})
     };
+    ldstSelect.addEventListener('change', updateCriticalOptions);
     cameraRequest.addEventListener('change', togglePanoVisibility);
     needs360.addEventListener('change', toggleSliceVisibility);
     document.addEventListener("DOMContentLoaded", togglePanoVisibility)

@@ -6,10 +6,11 @@ from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest
 from vipersci.vis.db.image_stats import ImageStats
 from vipersci.vis.db.image_tags import ImageTag
+from vipersci.vis.db.pano_records import PanoRecord
+from vipersci.vis.db.junc_image_pano import JuncImagePano
 from vipersci.vis.db.junc_image_record_tags import JuncImageRecordTag
 from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
 from vipersci.vis.db.ldst import LDST
-from vipersci.vis.db.ldst_verification import LDSTVerification
 from vipersci.vis.db.light_records import LightRecord
 
 # are we running in test mode? primarily affects file write behavior
@@ -34,15 +35,15 @@ BASES = [
     ImageRequest,
     ImageStats,
     ImageTag,
+    JuncImagePano,
     JuncImageRecordTag,
     JuncImageRequestLDST,
     LDST,
-    LDSTVerification,
     LightRecord,
+    PanoRecord,
     ProtectedListEntry,
 ]
 
-# path structure for application
 
 # postgres database folder
 TEST_DB_PATH = (Path(__file__).parent / 'vis_db').absolute()

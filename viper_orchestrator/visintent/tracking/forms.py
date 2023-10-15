@@ -23,11 +23,30 @@ from viper_orchestrator.visintent.visintent.settings import (
 )
 from vipersci.pds.pid import vis_instruments, vis_instrument_aliases
 from vipersci.vis.db.image_requests import ImageRequest
+from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
+from vipersci.vis.db.ldst import LDST
 from vipersci.vis.db.light_records import luminaire_names
+
+
+with OSession() as init_session:
+    hypotheses = init_session.scalars(select(LDST)).all()
+    LDST_IDS = [hypothesis.id for hypothesis in hypotheses]
 
 
 class BadURLError(ValueError):
     pass
+
+
+# TODO: may be a more clever way to handle this on the frontend
+class CarelessMultipleChoiceField(forms.MultipleChoiceField):
+    """
+    skip choice validation. for fields whose options we may modify dynamically.
+    """
+
+    def validate(self, value):
+        pass
+
+    default_validators = []
 
 
 class RequestForm(forms.Form):
@@ -159,54 +178,24 @@ class RequestForm(forms.Form):
             }
         ),
     )
-    ldst = forms.MultipleChoiceField(
+    ldst_hypotheses = forms.MultipleChoiceField(
         required=True,
         widget=forms.SelectMultiple(
-            attrs={"id": "ldst-elements", "value": "", "placeholder": ""}
+            attrs={
+                "id": "ldst-elements",
+                "value": "",
+                "placeholder": "",
+                "style": 'height: 10rem'
+            }
         ),
-        # NOTE: placeholders, should be loaded from vipersci when available
-        choices=[
-            ("1.a.1", "1.a.1"),
-            ("1.a.2", "1.a.2"),
-            ("1.a.3", "1.a.3"),
-            ("1.a.4", "1.a.4"),
-            ("1.a.5", "1.a.5"),
-            ("1.a.6", "1.a.6"),
-            ("1.b.1", "1.b.1"),
-            ("1.b.2", "1.b.2"),
-            ("1.c.1", "1.c.1"),
-            ("1.d.1", "1.d.1"),
-            ("2.a.1", "2.a.1"),
-            ("2.b.1", "2.b.1"),
-            ("2.b.2", "2.b.2"),
-            ("2.c.1", "2.c.1"),
-            ("2.c.2", "2.c.2"),
-            ("2.c.3", "2.c.3"),
-            ("2.c.4", "2.c.4"),
-            ("2.c.5", "2.c.5"),
-            ("2.c.6", "2.c.6"),
-            ("2.c.7", "2.c.7"),
-            ("2.c.8", "2.c.8"),
-            ("2.d.1", "2.d.1"),
-            ("2.e.1", "2.e.1"),
-            ("2.e.2", "2.e.2"),
-            ("2.e.3", "2.e.3"),
-            ("3.a.1", "3.a.1"),
-            ("3.a.2", "3.a.2"),
-            ("3.a.3", "3.a.3"),
-            ("3.b.1", "3.b.1"),
-            ("3.b.2", "3.b.2"),
-            ("4.a.1", "4.a.1"),
-            ("4.a.2", "4.a.2"),
-            ("4.b.1", "4.b.1"),
-            ("4.b.2", "4.b.2"),
-            ("4.b.3", "4.b.3"),
-            ("4.b.4", "4.b.4"),
-            ("4.b.5", "4.b.5"),
-            ("4.b.6", "4.b.6"),
-            ("4.c.1", "4.c.1"),
-            ("4.c.2", "4.c.2"),
-        ],
+        choices=[(id_, id_) for id_ in LDST_IDS]
+    )
+    critical = CarelessMultipleChoiceField(
+        required=False,
+        widget=forms.SelectMultiple(
+            attrs={'id': 'ldst-critical', 'value': '', 'placeholder': ''}
+        ),
+        choices=[]
     )
     users = forms.CharField(
         required=True,
@@ -329,19 +318,29 @@ class RequestForm(forms.Form):
     )
     supplementary_file = forms.FileField(required=False)
 
-    def clean(self):
-        super().clean()
-        # TODO: don't super need to do this here
-        if len(self.cleaned_data.get("luminaires", [])) > 2:
-            raise ValidationError("A max of two luminaires may be requested")
-        if not self.cleaned_data.get("luminaires"):
-            self.cleaned_data["luminaires"] = ["default"]
-        for k, v in self.cleaned_data.items():
-            if isinstance(v, (list, tuple)):
-                # TODO: ensure comma separation is good enough
-                self.cleaned_data[k] = ",".join(v)
-        self.request_time = dt.datetime.now()
-        return self.cleaned_data
+    @property
+    def associated_tables(self):
+        return {
+            'junc_image_request_ldst': {
+                'junc': JuncImageRequestLDST,
+                'pivot': ('image_request_id', 'id'),
+                'self_attr': 'image_request',
+            }
+        }
+
+    def _construct_associations(self):
+        """construct JuncImageRequestLDST attrs from form content"""
+        associations = []
+        with OSession() as session:
+            for hyp in self.cleaned_data['ldst_hypotheses']:
+                attrs = {
+                    'critical': hyp in self.cleaned_data['critical'],
+                    'ldst': session.scalars(
+                        select(LDST).where(LDST.id == hyp)
+                    ).one()
+                }
+                associations.append(attrs)
+        self.cleaned_data['junc_image_request_ldst'] = associations
 
     @staticmethod
     def _image_request_to_camera_request(request: ImageRequest):
@@ -366,7 +365,7 @@ class RequestForm(forms.Form):
             )
         return camera_request
 
-    def reformat_camera_request(self):
+    def _reformat_camera_request(self):
         """
         reformat camera request as expressed in the user interface into
         imaging mode/camera type/hazcam seq as desired by the ImageRequest
@@ -374,7 +373,7 @@ class RequestForm(forms.Form):
         UI.
         """
         # note that only aftcams/navcams have imaging_mode
-        request = self.cleaned_data["camera_request"]
+        request = self.cleaned_data['camera_request']
         ct, mode = request.split("_", maxsplit=1)
         self.camera_type = ct.upper()
         self.generalities = ("Any",)
@@ -389,6 +388,34 @@ class RequestForm(forms.Form):
         else:
             self.hazcams = ("Any",)
             self.imaging_mode = mode.upper()
+
+    def clean(self):
+        super().clean()
+        self._construct_associations()
+        self._reformat_camera_request()
+        if len(self.cleaned_data.get("luminaires", [])) > 2:
+            raise ValidationError("A max of two luminaires may be requested")
+        if not self.cleaned_data.get("luminaires"):
+            self.cleaned_data["luminaires"] = ["default"]
+        for k, v in self.cleaned_data.items():
+            if (
+                    isinstance(v, (list, tuple))
+                    and k not in self.associated_tables
+            ):
+                # TODO: ensure comma separation is good enough
+                self.cleaned_data[k] = ",".join(v)
+        self.request_time = dt.datetime.now().astimezone(dt.timezone.utc)
+        for fieldname in self.ui_only_fields:
+            del self.cleaned_data[fieldname]
+        return self.cleaned_data
+
+    ui_only_fields = (
+        'camera_request',
+        'need_360',
+        'supplementary_file',
+        'ldst_hypotheses',
+        'critical'
+    )
 
     # this is actually an optional set of integers, but, in form submission,
     # we retain / parse it as a string for UI reasons. TODO, maybe: clean

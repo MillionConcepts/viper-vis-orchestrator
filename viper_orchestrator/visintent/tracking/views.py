@@ -82,13 +82,10 @@ def submitrequest(
     )
     if form.is_valid() is False:
         return render(request, "image_request.html", {"form": form})
-    del form.cleaned_data["supplementary_file"]
-    form.reformat_camera_request()
-    del form.cleaned_data['camera_request']
     with OSession() as session:
         try:
-            pivot = "capture_id" if request_id is None else "request_id"
-            row = _create_or_update_entry(
+            pivot = "capture_id" if request_id is None else "id"
+            row, associations = _create_or_update_entry(
                 form,
                 session,
                 pivot,

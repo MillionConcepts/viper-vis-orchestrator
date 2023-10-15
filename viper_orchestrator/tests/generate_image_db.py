@@ -11,8 +11,18 @@ from sqlalchemy import select
 
 import viper_orchestrator.station.definition as vsd
 from viper_orchestrator.config import (
-    TEST_DB_PATH, MEDIA_ROOT, ROOTS, PARAMETERS
+    DB_PATH, MEDIA_ROOT, PARAMETERS, ROOTS, TEST
 )
+
+# only run this in test mode!
+assert TEST is True
+
+# clean up, start fresh
+shutil.rmtree(DB_PATH, ignore_errors=True)
+shutil.rmtree(MEDIA_ROOT, ignore_errors=True)
+for folder in ROOTS:
+    folder.mkdir(parents=True, exist_ok=True)
+
 from viper_orchestrator.db import OSession
 from viper_orchestrator.tests.utilities import make_mock_server
 from viper_orchestrator.yamcsutils.mock import MockContext, MockServer
@@ -37,13 +47,13 @@ def serve_images(max_products: int, server: MockServer) -> int:
 
 
 def serve_light_states(server: MockServer) -> tuple[int, int]:
-    measured_state_cols = server._pickable[
+    states = server._pickable[
         [c for c in server._pickable.columns if re.match("eng.*measured", c)]
     ]
-    off_df = (measured_state_cols == 'OFF').astype(int)
+    switch_df = (states == 'OFF').astype(int).diff().dropna(axis=0) != 0
     n_light_recs = 0
-    for light in off_df.columns:
-        n_light_recs += (off_df[light].diff() > 0).sum()
+    for light in switch_df.columns:
+        n_light_recs += (switch_df[light].sum())
     while True:
         try:
             server.serve_to_ctx()
@@ -52,15 +62,10 @@ def serve_light_states(server: MockServer) -> tuple[int, int]:
     return len(server._pickable), n_light_recs
 
 
-# clean up, start fresh
-shutil.rmtree(TEST_DB_PATH, ignore_errors=True)
-shutil.rmtree(MEDIA_ROOT, ignore_errors=True)
-for folder in ROOTS:
-    folder.mkdir(parents=True, exist_ok=True)
 station = vsd.create_station()
 station.save_port_to_shared_memory()
 station.start()
-vsd.launch_delegates(station, mock=True)
+vsd.launch_delegates(station, mock=True, context='local')
 # give delegate configuration a moment to propagate
 time.sleep(0.6)
 # make a shared mock context (fake websocket) for the mock yamcs server,

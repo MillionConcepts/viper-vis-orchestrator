@@ -18,7 +18,7 @@ from google.protobuf.message import Message
 from sqlalchemy import (
     Integer,
     ForeignKey,
-    Identity,
+    Identity, select,
 )
 from sqlalchemy.orm import DeclarativeBase, mapped_column
 from viper_orchestrator.station.utilities import (
@@ -86,7 +86,7 @@ def thumbnail_instruction(note: Mapping[str, Any]) -> pro.Action:
     """
     action = make_function_call_action(
         func="thumbnail_16bit_tif",
-        module="viper_orchestrator.station.actors",
+        module="viper_orchestrator.station.utilities",
         kwargs={
             "inpath": Path(note["content"]),
             "outpath": BROWSE_ROOT
@@ -127,6 +127,32 @@ class ImageCheck(Actor):
     name = "imagecheck"
 
 
+def get_light_state(
+    at_time: Optional[dt.datetime] = None
+) -> dict[str, bool]:
+    """
+    make dict representing light state immediately prior to at_time (or just
+    the most recent light state if at_time is None).
+    If no LightRecord available for a luminaire, it is set to False (off).
+    """
+    lightstate, gentime = {}, None
+    for name in luminaire_names.keys():
+        selector = select(LightRecord).where(LightRecord.name == name)
+        if at_time is not None:
+            selector = selector.where(LightRecord.datetime < at_time)
+        selector = selector.order_by(LightRecord.datetime.desc())
+        with OSession() as session:
+            record = session.scalars(selector).first()
+            if record is None:
+                lightstate[name] = False
+            else:
+                lightstate[name] = record.on
+                if gentime is None or gentime < record.datetime:
+                    gentime = record.datetime
+        lightstate[name] = False if record is None else record.on
+    return lightstate | {'generation_time': gentime}
+
+
 class LightStateProcessor(Actor):
     """
     actor that makes LightRecord objects from light state parameters.
@@ -143,39 +169,37 @@ class LightStateProcessor(Actor):
         if self.owner.lightmem is None:
             return
         gentime = light_pv["generation_time"].astimezone(dt.UTC)
+        # holding light state in memory is an optimization, but it is possible
+        # for parameter values to arrive out of order. to avoid race
+        # conditions, if we get an out-of-order value, reset our memory to the
+        # state immediately prior to the generation time of the value.
+        if self.owner.lightmem['generation_time'] is not None:
+            if gentime < self.owner.lightmem['generation_time']:
+                self.owner.lightmem = get_light_state(gentime)
+        state, changed = self.owner.lightmem.copy(), []
+        state['generation_time'] = gentime
         lights = light_pv["eng_value"]
-        state, switch_on, switch_off = self.owner.lightmem.copy(), [], []
-        state["generation_time"] = gentime
         for light in luminaire_names.keys():
-            measured = lights[light]["measuredState"]
-            if measured == "OFF" and self.owner.lightmem[light] is not False:
-                switch_off.append(light)
-                state[light] = False
-            elif measured == "ON" and self.owner.lightmem[light] is False:
-                switch_on.append(light)
-                state[light] = gentime
-        # TODO, maybe: log 'backwards' times
+            on = {'OFF': False, 'ON': True}[lights[light]["measuredState"]]
+            if on != self.owner.lightmem[light]:
+                changed.append(light)
+                state[light] = on
         columns = ("generation_time",) + tuple(luminaire_names.keys())
-        # log all changes in light state to disk.
-        if len(switch_on) + len(switch_off) > 0:
+        # log changes in light state to disk.
+        if len(changed) > 0:
             if self.owner.logpath is not None:
                 with self.owner.logpath.open("a") as stream:
                     dump = stringify_timedict(state)
                     stream.write(f"{','.join(dump[c] for c in columns)}\n")
-        # however, we only construct a LightRecord when a light turns _off_.
-        # this is because each LightRecord represents a time range in which a
-        # light is on.
-        recs = []
-        for light in switch_off:
-            rec = LightRecord(
-                name=light,
-                start_time=self.owner.lightmem[light],
-                last_time=self.owner.lightmem["generation_time"],
-            )
-            recs.append(rec)
-        self.owner.lightmem = state
+        # also prep them for insertion into the database.
+        recs = [
+            LightRecord(name=light, datetime=gentime, on=state[light])
+            for light in changed
+        ]
+        # if we made records, queue them for transmission to the Station
         if len(recs) > 0:
             node.add_actionable_event(recs, "made_light_records")
+        self.owner.lightmem = state
 
     name = "light_state_processor"
 
@@ -256,7 +280,6 @@ class ParameterSensor(Sensor, ABC):
         self._parameters = []
         self._ctx, self._client, self._processor = None, None, None
         self._initialization_status = "uninitialized"
-
 
     def checker(self, _, **__) -> tuple[None, deque]:
         """curried pop-from-cache function"""
@@ -378,12 +401,12 @@ class ParameterSensor(Sensor, ABC):
     _processor_path = ("viper", "realtime")
     _count = 0
     interface = (
-        "parameters",
+        "count",
+        "initialization_status",
         "mock",
+        "parameters",
         "processor_path",
         "url",
-        "initialization_status",
-        "count",
     )
 
 
@@ -411,11 +434,8 @@ class LightSensor(ParameterSensor):
 
     def __init__(self):
         super().__init__()
-        # TODO: we currently have no straightforward way to reinitialize this
-        #  after crash, because the LightRecord table doesn't tell us when
-        #  lights that are currently on came on. will need to use the
-        #  archive.
-        self.lightmem = {k: False for k in luminaire_names.keys()}
+        # initialize from most recent LightRecord per luminaire (if one exists)
+        self.lightmem = get_light_state()
 
     def get_logpath(self) -> Path:
         return self._logpath

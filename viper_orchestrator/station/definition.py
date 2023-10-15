@@ -62,7 +62,7 @@ def launch_delegates(
     }
     thumbnail_watch_launch_spec = {
         # sensor that watches a directory on the filesystem
-        "elements": [("hostess.station.components", "DirWatch")],
+        "elements": [("hostess.station.actors", "DirWatch")],
     }
     thumbnail_watch_config_spec = {
         # what directory shall we watch?
