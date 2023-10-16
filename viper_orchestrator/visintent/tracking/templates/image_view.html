@@ -1,0 +1,49 @@
+{% load static %}
+{% include "layouts/head.html" %}
+<body>
+{% include "layouts/nav.html" %}
+
+<div id="layout-container" class="split-flow-container">
+    <div
+        id="product-container"
+        style="display:flex;flex-direction:row;margin-left:1vw;margin-top:1vh"
+    >
+        <div
+                id="metadata-panel"
+                class="flex-panel shrinking-text"
+                style="overflow:scroll"
+        >
+            <h3 class="metadata-header">{{ pid }}</h3>
+            {% for field, value in metadata.items %}
+                <p class="metadata-row">{{ field }}: {{ value }}</p>
+            {% endfor %}
+        </div>
+        <div id="image-panel" class="flex-panel">
+            <img
+                src="{{ browse_url }}"
+                alt="browse image for {{ pid }}"
+                style="max-width: 90%; height:auto;"
+            >
+        </div>
+    </div>
+    <div id="status-panel" class="flex-panel" style="flex-shrink:0">
+        <div id="link-container">
+            <h3>download</h3>
+            <div id="link-horizontal" style="display:flex;flex-direction:row">
+                <a href="{{ image_url }}" class="big-link">image</a>
+                <a href="{{ browse_url }}" class="big-link">label</a>
+            </div>
+        </div>
+        <div id="status-container">
+            <h3>Placeholder for review status</h3>
+            <h3>Placeholder for review links</h3>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+</body>
+</html>

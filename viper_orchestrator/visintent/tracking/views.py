@@ -2,6 +2,7 @@
 import datetime as dt
 import json
 import shutil
+from pathlib import Path
 from typing import Union
 
 from cytoolz import groupby
@@ -55,23 +56,24 @@ def image(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
                 f"{pid}.",
                 status=404,
             )
-        label_path = (
-            MEDIA_ROOT
-            / "products/data"
-            / record.file_path.replace(".tif", ".json")
+        label_path_stub = (
+            Path("products/data") / record.file_path.replace(".tif", ".json")
         )
-        with label_path.open() as stream:
+        with (MEDIA_ROOT / label_path_stub).open() as stream:
             metadata = json.load(stream)
         return render(
             request,
-            "image.html",
+            "image_view.html",
             {
                 "browse_url": (
                     "media/products/browse/"
                     + record.file_path.replace(".tif", "_browse.jpg")
                 ),
+                "label_url": "media/" + str(label_path_stub),
                 "image_url": record.file_path,
-                "metadata": metadata
+                "metadata": metadata,
+                "pid": record._pid,
+                "pagetitle": record._pid
                 # TODO: verification link, blah blah blah
             },
         )

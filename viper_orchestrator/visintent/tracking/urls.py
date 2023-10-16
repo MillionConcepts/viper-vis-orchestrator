@@ -21,5 +21,5 @@ urlpatterns = [
     path("pllist", views.pllist, name="protectedlist"),
     path("", views.pages, name="landing"),
     path("pages", views.pages, name="pages"),
-    re_path(vis_pid_re.pattern, views.image, name="image")
+    re_path(f"^{vis_pid_re.pattern}", views.image, name="image")
 ]
