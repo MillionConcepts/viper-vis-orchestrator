@@ -22,7 +22,7 @@ from viper_orchestrator.visintent.visintent.settings import (
     MEDIA_URL,
 )
 from vipersci.pds.pid import vis_instruments, vis_instrument_aliases
-from vipersci.vis.db.image_requests import ImageRequest
+from vipersci.vis.db.image_requests import ImageRequest, Status
 from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
 from vipersci.vis.db.ldst import LDST
 from vipersci.vis.db.light_records import luminaire_names
@@ -203,6 +203,14 @@ class RequestForm(forms.Form):
         ),
         choices=[]
     )
+
+    status = forms.ChoiceField(
+        required=True,
+        widget=forms.Select(attrs={'id': 'status', 'value': 'WORKING'}),
+        choices=[(e.name, e.name) for e in list(Status)],
+        initial='WORKING'
+    )
+
     users = forms.CharField(
         required=True,
         widget=forms.TextInput(

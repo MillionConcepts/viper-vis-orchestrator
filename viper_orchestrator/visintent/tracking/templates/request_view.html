@@ -1,4 +1,4 @@
-{% load static %}
+'{% load static %}
 {% include "layouts/head.html" %}
 <body>
 {% include "layouts/nav.html" %}
@@ -18,16 +18,20 @@
             <input type="number" style="display: none;" id="hidden-id-input" name="id" value={{ form.id }}>
         </label>
     {% endif %}
+    <p class="metadata-view-title">{{ form.status.label }}</p>
+    <p class="metadata-view-value">{{ form.status.value.name }}</p>
     {% for field in form %}
         {% if field.name in form.slice_fields and not showslice %}
         {% elif field.name in form.pano_only_fields and not showpano %}
-        {% elif field.name == 'supplementary_file' and filename is not None %}
+        {% elif field.name == 'supplementary_file' and filename != None %}
             {# TODO: messy styling #}
-            <h4 style="margin-bottom: 1px">supplementary file</h4>
+            <p class="metadata-view-title">Supplementary File</p>
             <a href="{{ file_url }}">{{ filename }}</a>
+        {% elif field.name == 'supplementary_file' %}
+        {% elif field.name == 'status' %}
         {% else %}
-            <h4 style="margin-bottom: 1px">{{ field.label }}</h4>
-            <p style="margin: 0">{{ field.value }}</p>
+            <p class="metadata-view-title">{{ field.label }}</p>
+            <p class="metadata-view-value">{{ field.value }}</p>
         {% endif %}
     {% endfor %}
 </div>

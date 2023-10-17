@@ -116,7 +116,17 @@ body {
     }
 }
 
-h1, h2, h3, h4 {
+.metadata-view-title {
+    font-size: 19pt;
+    font-weight: 400;
+    margin-bottom: 1px;
+}
+.metadata-view-value {
+    font-size: 13pt;
+    margin: 0;
+}
+
+h1, h2, h3, h4, .metadata-title {
     font-family: 'Titillium Web', sans-serif;
 }
 h1, h2, h3, h4, p {

@@ -28,7 +28,16 @@
         {{ form.errors }}
     {% endif %}
     <div style="margin-top: 1rem; display: flex; flex-direction: column;">
+        {% if form.id is None %}
+            <div id="status-hider" style="display: none">
+        {% endif %}
+            <label for={{ form.status.id }}>{{ form.status.label}}</label>
+            {{ form.status }}
+        {% if form.id is None %}
+            </div>
+        {% endif %}
         {% for field in form %}
+        {% if field.name != 'status' %}
             <label
                 {% if field.name in form.slice_fields %}class="pano-only slice-field"
                 {% elif field.name in form.pano_only_fields %}class="pano-only"
@@ -40,6 +49,7 @@
                 {% endif %}
             </label>
             {{field}}
+        {% endif %}
         {% endfor %}
     </div>
     <div style="margin-top: 1rem;">
