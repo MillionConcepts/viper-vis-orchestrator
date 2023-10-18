@@ -69,7 +69,7 @@ def image(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
                     BROWSE_URL
                     + record.file_path.replace(".tif", "_browse.jpg")
                 ),
-                "label_url": DATA_ROOT + str(label_path_stub),
+                "label_url": DATA_ROOT / label_path_stub,
                 "image_url": record.file_path,
                 "metadata": metadata,
                 "pid": record._pid,
