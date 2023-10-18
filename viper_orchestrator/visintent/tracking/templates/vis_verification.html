@@ -1,0 +1,116 @@
+{% load static %}
+{% include "layouts/head.html" %}
+<body>
+{% include "layouts/nav.html" %}
+<form method="POST" action="/verify"
+  enctype="multipart/form-data" style="max-width: 50vw"
+>
+    {% if form.capture_id|length > 0 %}
+        <h3>editing intent information for capture id(s) {{ form.capture_id }}</h3>
+        {% if form.product_ids|length > 0 %}
+            <h4>associated product ids:</h4>
+            {% for product_id in form.product_ids %}{{ product_id }}
+            {% endfor %}
+        {% endif %}
+        <label for="hidden-capture-id-input">
+            <input type="text" style="display: none;" id="hidden-capture-id-input" name="capture_id" value={{ form.capture_id }}>
+        </label>
+    {% elif form.id is not None %}
+        <h2>editing image request</h2>
+{#        <p class="placeholder-text">placeholder: a way to delete me</p>#}
+        <label for="hidden-request-id-input">
+            <input type="number" style="display: none;" id="hidden-request-id-input" name="request_id" value={{ form.id }}>
+        </label>
+    {% else %}
+        <h2>new image request</h2>
+    {% endif %}
+    {% if form.errors %}
+        {{ form.errors }}
+    {% endif %}
+    <div style="margin-top: 1rem; display: flex; flex-direction: column;">
+        {% if form.id is None %}
+            <div id="status-hider" style="display: none">
+        {% endif %}
+            <label for={{ form.status.id }}>{{ form.status.label}}</label>
+            {{ form.status }}
+        {% if form.id is None %}
+            </div>
+        {% endif %}
+        {% for field in form %}
+        {% if field.name != 'status' %}
+            <label
+                {% if field.name in form.slice_fields %}class="pano-only slice-field"
+                {% elif field.name in form.pano_only_fields %}class="pano-only"
+                {% endif %}
+                for="{{ field.id }}">{{ field.label }}
+                {% if field.name == 'supplementary_file' and filename is not None %}
+                    (existing file:
+                    <a href="{{ file_url }}">{{ filename }})</a>)
+                {% endif %}
+            </label>
+            {{field}}
+        {% endif %}
+        {% endfor %}
+    </div>
+    <div style="margin-top: 1rem;">
+        <button type="submit" name="submitrequest" formaction="/submitrequest">submit</button>
+    </div>
+</form>
+<script>
+    const ldstSelect = document.getElementById('ldst-elements');
+    const ldstCritical = document.getElementById('ldst-critical');
+    const ldstOptions = ldstSelect.options
+    const ldstCriticalOptions = ldstCritical.options
+    const cameraRequest = document.getElementById('camera-request');
+    const needs360 = document.getElementById('need-360');
+    const panoOnlyInputs = document.getElementsByClassName('pano-only');
+    const sliceInputs = document.getElementsByClassName('slice-field');
+    /**
+     * @param {HTMLOptionElement} option
+     * @param {HTMLOptionsCollection} options
+     */
+    const getEquivalentOption = function(option, options) {
+        return Object.values(options).find(function(opt) {
+            return opt.text === option.text && opt.value === option.value
+        }) || null;
+    }
+    /**
+     * @param {HTMLOptionsCollection} source
+     * @param {HTMLOptionsCollection} target
+     */
+    const updateOptionsFromSelected = function(source, target) {
+        const new_options = [];
+        Object.values(source).forEach(function(option) {
+            console.log(option.value)
+            let existing = getEquivalentOption(option, target);
+            if (option.selected && (existing === null)) {
+                new_options.push(new Option(option.text, option.value))
+            }
+            else if (option.selected && (existing !== null)) {
+                new_options.push(existing)
+            }
+        });
+        Object.values(target).forEach(o => target.remove(o))
+        new_options.sort().forEach(o => target.add(o))
+    }
+    const updateCriticalOptions = function() {
+        return updateOptionsFromSelected(ldstOptions, ldstCriticalOptions)
+    }
+    const togglePanoVisibility = function() {
+        const display = (cameraRequest.value === 'navcam_panorama') ? 'block' : 'none';
+        Array.from(panoOnlyInputs).forEach((input) => {input.style.display = display})
+    };
+    const toggleSliceVisibility = function() {
+        const pano = cameraRequest.value === 'navcam_panorama'
+        const slice = needs360.checked === false
+        const display = pano && slice ? 'block' : 'none'
+        Array.from(sliceInputs).forEach((input) => {input.style.display = display})
+    };
+    ldstSelect.addEventListener('change', updateCriticalOptions);
+    cameraRequest.addEventListener('change', togglePanoVisibility);
+    needs360.addEventListener('change', toggleSliceVisibility);
+    document.addEventListener("DOMContentLoaded", togglePanoVisibility)
+    document.addEventListener("DOMContentLoaded", toggleSliceVisibility)
+</script>
+</body>
+</html>

@@ -1,12 +1,18 @@
 """conventional django forms module"""
+from abc import ABC
 import datetime as dt
+from collections import defaultdict
+from functools import cached_property
+from types import MappingProxyType as MPt
+from typing import Optional, Mapping, Union, Callable, Collection
 import warnings
-from typing import Optional
 
 from cytoolz import keyfilter
 from django import forms
 from django.core.exceptions import ValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import InvalidRequestError
+from sqlalchemy.orm import Session, DeclarativeBase
 
 from viper_orchestrator.db import OSession
 from viper_orchestrator.db.table_utils import (
@@ -22,34 +28,171 @@ from viper_orchestrator.visintent.visintent.settings import (
     MEDIA_URL,
 )
 from vipersci.pds.pid import vis_instruments, vis_instrument_aliases
+from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest, Status
+from vipersci.vis.db.image_tags import ImageTag
+from vipersci.vis.db.junc_image_record_tags import JuncImageRecordTag
 from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
 from vipersci.vis.db.ldst import LDST
 from vipersci.vis.db.light_records import luminaire_names
 
 
-with OSession() as init_session:
-    hypotheses = init_session.scalars(select(LDST)).all()
-    LDST_IDS = [hypothesis.id for hypothesis in hypotheses]
+def initialize_fields():
+    with OSession() as init_session:
+        hypotheses = init_session.scalars(select(LDST)).all()
+        ldst_ids = [hypothesis.id for hypothesis in hypotheses]
+        image_tags = init_session.scalars(select(ImageTag)).all()
+        tags = [tag.name for tag in image_tags]
+    return {"ldst_ids": ldst_ids, "tags": tags}
+
+
+FIELDS = initialize_fields()
+LDST_IDS = FIELDS["ldst_ids"]
+TAG_NAMES = FIELDS["tags"]
+
+AssociationRule: Mapping[
+    str, Union[str, DeclarativeBase, tuple[str], Callable[[], None]]
+]
 
 
 class BadURLError(ValueError):
     pass
 
 
-# TODO: may be a more clever way to handle this on the frontend
 class CarelessMultipleChoiceField(forms.MultipleChoiceField):
     """
-    skip choice validation. for fields whose options we may modify dynamically.
+    aggressively skip Django's default choice validation.
+    intended when we want to modify a field's options dynamically and don't
+    want unnecessary handholding interfering with our modifications.
     """
+
+    def __init__(self, *, choices, **kwargs):
+        super().__init__(choices=choices, **kwargs)
+        self.default_validators = []
 
     def validate(self, value):
         pass
 
-    default_validators = []
+
+class JunctionForm(forms.Form, ABC):
+    """
+    abstract class for forms that help manage SQLAlchemy many-to-many
+    relationships
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.associated = {k: [] for k in self.association_rules.keys()}
+
+    def _populate(self, session: Session):
+        for table, rules in self.association_rules.items():
+            if not hasattr(self, rules["pivot"][1]):
+                continue
+            existing = self.get_associations(rules, session)
+            if len(existing) != 0:
+                self.association_rules[table](existing)
+
+    # noinspection PyTypeChecker
+    def get_associations(
+        self, table: type[DeclarativeBase], session: Session
+    ) -> list[DeclarativeBase]:
+        junc_reference, referent = self.association_rules[table]['pivot']
+        exist_selector = select(table).where(
+            getattr(table, junc_reference) == getattr(self, referent)
+        )
+        return session.scalars(exist_selector).all()
+
+    @cached_property
+    def associated_form_fields(self):
+        return set(
+            filter(
+                None,
+                (r.get('form_field') for r in self.association_rules.values())
+            )
+        )
+
+    association_rules: Mapping[type[DeclarativeBase], AssociationRule]
+    associated: dict[type[DeclarativeBase], list[dict]]
 
 
-class RequestForm(forms.Form):
+class VerificationForm(JunctionForm):
+    """form for VIS verification of individual images."""
+
+    def __init__(
+        self,
+        *args,
+        image_record: Optional[ImageRecord] = None,
+        pid: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        if image_record is None and pid is None:
+            raise TypeError(
+                "Cannot construct this form without a product ID or an "
+                "ImageRecord object"
+            )
+        elif image_record is None:
+            try:
+                with OSession() as session:
+                    image_record = session.scalars(
+                        select(ImageRecord).where(ImageRecord._pid == pid)
+                    ).one()
+            except InvalidRequestError:
+                raise InvalidRequestError(
+                    "Cannot find a unique image matching this product ID"
+                )
+        self.image_record = image_record
+
+    image_tags = forms.MultipleChoiceField(
+        widget=forms.SelectMultiple(
+            attrs={"id": "image-tags", "value": "", "placeholder": ""}
+        ),
+        choices=[(name, name) for name in TAG_NAMES],
+    )
+    verification_notes = forms.CharField(
+        widget=forms.Textarea(
+            attrs={
+                "id": "verification-notes",
+                "placeholder": "any additional notes on image quality",
+            }
+        )
+    )
+    verified = forms.BooleanField(required=True)
+
+    @property
+    def associated_tables(self):
+        return {
+            JuncImageRecordTag: {
+                "target": LDST,
+                "pivot": ("image_record_id", "id"),
+                "junc_pivot": "image_tag",
+                "self_attr": "image_record",
+            }
+        }
+
+    def _populate_from_junc_image_record_tag(self, junc_rows):
+        tag_names = []
+        for row in junc_rows:
+            tag_names.append(row.name)
+        self.fields["image_tags"].initial = tag_names
+
+    def _construct_associations(self):
+        """construct JuncImageRecordTag attrs from form content"""
+        with OSession() as session:
+            for tag in self.cleaned_data["image_tags"]:
+                attrs = {
+                    "name": session.scalars(
+                        select(ImageTag).where(ImageTag.name == tag)
+                    )
+                }
+            self.associated[JuncImageRecordTag].append(attrs)
+
+    def clean(self):
+        super().clean()
+        self._construct_associations()
+
+
+class RequestForm(JunctionForm):
     """form for submitting or editing an image request."""
 
     def __init__(
@@ -91,22 +234,8 @@ class RequestForm(forms.Form):
                 )
         elif request_id is not None:
             self.id = int(request_id)
-        for table, rules in self.associated_tables.items():
-            if hasattr(self, rules['pivot'][1]):
-                with OSession() as session:
-                    existing = self.get_associations(rules, session)
-                if len(existing) != 0:
-                    getattr(self, f"_populate_from_{table}")(existing)
-        self.pano_only_fields = [
-            field_name
-            for field_name, field in self.fields.items()
-            if "pano-only" in field.widget.attrs.get("class", "")
-        ]
-        self.slice_fields = [
-            field_name
-            for field_name, field in self.fields.items()
-            if "slice-field" in field.widget.attrs.get("class", "")
-        ]
+        with OSession() as session:
+            self._populate(session)
 
     def filepaths(self):
         # TODO, maybe: is this pathing a little sketchy?
@@ -191,24 +320,24 @@ class RequestForm(forms.Form):
                 "id": "ldst-elements",
                 "value": "",
                 "placeholder": "",
-                "style": 'height: 10rem'
+                "style": "height: 10rem",
             }
         ),
-        choices=[(id_, id_) for id_ in LDST_IDS]
+        choices=[(id_, id_) for id_ in LDST_IDS],
     )
     critical = CarelessMultipleChoiceField(
         required=False,
         widget=forms.SelectMultiple(
-            attrs={'id': 'ldst-critical', 'value': '', 'placeholder': ''}
+            attrs={"id": "ldst-critical", "value": "", "placeholder": ""}
         ),
-        choices=[]
+        choices=[],
     )
 
     status = forms.ChoiceField(
         required=True,
-        widget=forms.Select(attrs={'id': 'status', 'value': 'WORKING'}),
+        widget=forms.Select(attrs={"id": "status", "value": "WORKING"}),
         choices=[(e.name, e.name) for e in list(Status)],
-        initial='WORKING'
+        initial="WORKING",
     )
 
     users = forms.CharField(
@@ -332,25 +461,39 @@ class RequestForm(forms.Form):
     )
     supplementary_file = forms.FileField(required=False)
 
+    # properties to help webpage formatting. they denote fields to hide or
+    # reveal depending on whether a panorama is requested, and, if so, whether
+    # full-360 is selected. they are used on the frontend to add CSS classes
+    # to HTML elements that are then used as references by js.
     @property
-    def associated_tables(self):
-        return {
-            'junc_image_request_ldst': {
-                'junc': JuncImageRequestLDST,
-                'target': LDST,
-                'pivot': ('image_request_id', 'id'),
-                'junc_pivot': ('ldst', 'id'),
-                'self_attr': 'image_request',
-            }
-        }
+    def pano_only_fields(self):
+        return [
+            field_name
+            for field_name, field in self.fields.items()
+            if "pano-only" in field.widget.attrs.get("class", "")
+        ]
 
-    def get_associations(self, rules, session):
-        junc, pivot = rules['junc'], rules['pivot']
-        exist_selector = select(junc).where(
-            getattr(junc, pivot[0]) == getattr(self, pivot[1])
-        )
-        existing = session.scalars(exist_selector).all()
-        return existing
+    @property
+    def slice_fields(self):
+        return [
+            field_name
+            for field_name, field in self.fields.items()
+            if "slice-field" in field.widget.attrs.get("class", "")
+        ]
+
+    association_rules = MPt(
+        {
+            JuncImageRequestLDST: MPt(
+                {
+                    "target": LDST,
+                    "pivot": ("image_request_id", "id"),
+                    "junc_pivot": ("ldst", "id"),
+                    "self_attr": "image_request",
+                    "associated_form_field": "ldst_hypotheses"
+                }
+            )
+        }
+    )
 
     def _populate_from_junc_image_request_ldst(self, junc_rows):
         ldst_hypotheses, critical = [], []
@@ -358,23 +501,22 @@ class RequestForm(forms.Form):
             ldst_hypotheses.append(row.ldst_id)
             if row.critical is True:
                 critical.append(row.ldst_id)
-        self.fields['ldst_hypotheses'].initial = ldst_hypotheses
-        self.fields['critical'].choices = [(h, h) for h in ldst_hypotheses]
-        self.fields['critical'].initial = critical
+        self.fields["ldst_hypotheses"].initial = ldst_hypotheses
+        self.fields["critical"].choices = [(h, h) for h in ldst_hypotheses]
+        self.fields["critical"].initial = critical
 
     def _construct_associations(self):
         """construct JuncImageRequestLDST attrs from form content"""
         associations = []
         with OSession() as session:
-            for hyp in self.cleaned_data['ldst_hypotheses']:
+            for hyp in self.cleaned_data["ldst_hypotheses"]:
                 attrs = {
-                    'critical': hyp in self.cleaned_data['critical'],
-                    'ldst': session.scalars(
+                    "critical": hyp in self.cleaned_data["critical"],
+                    "ldst": session.scalars(
                         select(LDST).where(LDST.id == hyp)
-                    ).one()
+                    ).one(),
                 }
-                associations.append(attrs)
-        self.cleaned_data['junc_image_request_ldst'] = associations
+                self.associated[JuncImageRequestLDST].append(attrs)
 
     @staticmethod
     def _image_request_to_camera_request(request: ImageRequest):
@@ -407,7 +549,7 @@ class RequestForm(forms.Form):
         UI.
         """
         # note that only aftcams/navcams have imaging_mode
-        request = self.cleaned_data['camera_request']
+        request = self.cleaned_data["camera_request"]
         ct, mode = request.split("_", maxsplit=1)
         self.camera_type = ct.upper()
         self.generalities = ("Any",)
@@ -433,8 +575,8 @@ class RequestForm(forms.Form):
             self.cleaned_data["luminaires"] = ["default"]
         for k, v in self.cleaned_data.items():
             if (
-                    isinstance(v, (list, tuple))
-                    and k not in self.associated_tables
+                isinstance(v, (list, tuple))
+                and k not in self.association_rules
             ):
                 # TODO: ensure comma separation is good enough
                 self.cleaned_data[k] = ",".join(v)
@@ -444,11 +586,11 @@ class RequestForm(forms.Form):
         return self.cleaned_data
 
     ui_only_fields = (
-        'camera_request',
-        'need_360',
-        'supplementary_file',
-        'ldst_hypotheses',
-        'critical'
+        "camera_request",
+        "need_360",
+        "supplementary_file",
+        "ldst_hypotheses",
+        "critical",
     )
 
     # this is actually an optional set of integers, but, in form submission,
