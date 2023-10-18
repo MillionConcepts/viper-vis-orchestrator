@@ -105,7 +105,22 @@ body {
     max-height: 50rem;
     overflow: scroll;
 }
-
+.request-table {
+    display: none;
+    border-top: 1px solid var(--silver);
+    padding-top: 1rem;
+}
+.request-table th, td {
+    padding-right: 1rem;
+    padding-left: 1rem;
+}
+.request-table th {
+    font-size:20pt;
+}
+.request-table td {
+    font-size: 18pt;
+    text-align: center;
+}
 
 @media (max-width: 90rem) {
     .split-flow-container, .pl-table-container {
@@ -124,6 +139,20 @@ body {
 .metadata-view-value {
     font-size: 13pt;
     margin: 0;
+}
+.horizontal-anchor-container {
+    display: flex;
+    flex-direction: row;
+    margin-bottom: 2rem;
+    padding-left: 1rem;
+    border-left: 2px solid var(--silver)
+}
+.horizontal-anchor-container a {
+    font-size: 24px;
+    color: var(--silver);
+    margin-right: 1rem;
+    padding-right: 1rem;
+    border-right: 2px solid var(--silver)
 }
 
 h1, h2, h3, h4, .metadata-title {
@@ -172,10 +201,9 @@ a:hover {
 a:visited {
     color: var(--royal-violet);
 }
-
-
 aside {
     display: block;
     float: right;
     width: 390px;
 }
+

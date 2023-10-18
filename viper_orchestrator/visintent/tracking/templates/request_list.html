@@ -3,34 +3,62 @@
 <body>
 {% include "layouts/nav.html" %}
 <div>
-    {% if error %}
-    {{ error }}
-    {% endif %}
-    <div style="display:flex">
-    {# TODO, maybe: dynamically generate with js instead of templates #}
-    <div>
-        <h2>pending</h2>
-        <table id="request-table-pending" style="margin-right:2vw">
-            {% include "layouts/request_table_header.html" %}
-            {% for record in records %}
-                {% if not record.capture_id %}
-                    {% include "layouts/request_table_row.html" %}
-                {% endif %}
-            {% endfor %}
-        </table>
-    </div>
-    <div>
-        <h2>fulfilled</h2>
-        <table id="request-table-fulfilled">
-            {% include "layouts/request_table_header.html" %}
-            {% for record in records %}
-                {% if record.capture_id %}
-                    {% include "layouts/request_table_row.html" %}
-                {% endif %}
-            {% endfor %}
-        </table>
-    </div>
+    <h3>Image Request Tables</h3>
+    <div style="display:flex; margin-top: 2rem; margin-bottom: 1rem;">
+        <div>
+            <div id="status-picker" class="horizontal-anchor-container">
+                {% for s in statuses %}
+                    <a
+                        id = "request-table-{{s}}-anchor"
+                        onclick="revealTable('{{ s }}')">{{ s }}
+                    </a>
+                {% endfor %}
+            </div>
+        {% for s in statuses %}
+            <p id="request-table-{{ s }}-sorry" style="font-size: 18pt">
+                No requests currently exist with this status.
+            </p>
+            <table class='request-table' id="request-table-{{ s }}">
+                {% include "layouts/request_table_header.html" %}
+                {% for record in records %}
+                    {% if record.status == s %}
+                        {% include "layouts/request_table_row.html" %}
+                    {% endif %}
+                {% endfor %}
+            </table>
+        {% endfor %}
+        </div>
     </div>
 </div>
+<script>
+    const tables = Array.from(document.getElementsByClassName('request-table'));
+    const styleTable = function(table, visible) {
+        const anchor = document.getElementById(`${table.id}-anchor`)
+        const sorry = document.getElementById(`${table.id}-sorry`)
+        if (visible) {
+            if (table.childElementCount < 2) {
+                table.style.display = 'none';
+                sorry.style.display = 'inherit'
+            }
+            else {
+                table.style.display = 'inherit'
+                sorry.style.display = 'none'
+            }
+            anchor.style.color = '#5fc5c6';
+        }
+        else {
+            table.style.display = 'none';
+            sorry.style.display = 'none';
+            anchor.style.color = '#dee1e3'
+        }
+    };
+    const revealTable = function(s) {
+        tables.forEach(t => styleTable(t, t.id === `request-table-${s}`));
+    }
+    const revealWorking = function(_event) {
+        revealTable("WORKING")
+    }
+    document.addEventListener("DOMContentLoaded", revealWorking)
+</script>
 </body>
 </html>

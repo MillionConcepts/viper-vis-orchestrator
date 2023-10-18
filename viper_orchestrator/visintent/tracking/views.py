@@ -41,7 +41,7 @@ from viper_orchestrator.visintent.tracking.tables import (
 from viper_orchestrator.visintent.visintent.settings import BROWSE_URL, \
     DATA_URL
 from vipersci.vis.db.image_records import ImageRecord
-from vipersci.vis.db.image_requests import ImageRequest
+from vipersci.vis.db.image_requests import ImageRequest, Status
 
 
 @never_cache
@@ -165,16 +165,21 @@ def requestlist(request):
             record = {
                 "title": row.title,
                 "request_time": row.request_time,
-                "capture_id": get_capture_ids(row, as_str=True),
                 "view_url": (
                     f"/imagerequest?request_id={row.id}&editing=false"
                 ),
+                "justification": row.justification,
                 "request_id": row.id,
                 "pagetitle": "Image Request List",
+                "status": row.status.name
             }
             records.append(record)
         # TODO: paginate, preferably configurably
-    return render(request, "request_list.html", {"records": records})
+    return render(
+        request,
+        "request_list.html",
+        {"records": records, "statuses": [s.name for s in Status]}
+    )
 
 
 @never_cache
