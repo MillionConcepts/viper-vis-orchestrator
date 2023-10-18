@@ -2,7 +2,6 @@
 import datetime as dt
 import json
 import shutil
-from pathlib import Path
 from typing import Union
 
 from cytoolz import groupby
@@ -13,7 +12,8 @@ from django.views.decorators.cache import never_cache
 from sqlalchemy import select
 from sqlalchemy.exc import InvalidRequestError
 
-from viper_orchestrator.config import PRODUCT_ROOT, MEDIA_ROOT
+# noinspection PyUnresolvedReferences
+from viper_orchestrator.config import DATA_ROOT, PRODUCT_ROOT
 from viper_orchestrator.db import OSession
 from viper_orchestrator.db.table_utils import (
     image_request_capturesets,
@@ -38,6 +38,8 @@ from viper_orchestrator.visintent.tracking.tables import (
     CCU_HASH,
     ProtectedListEntry,
 )
+from viper_orchestrator.visintent.visintent.settings import BROWSE_URL, \
+    DATA_URL
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest
 
@@ -56,20 +58,18 @@ def image(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
                 f"{pid}.",
                 status=404,
             )
-        label_path_stub = (
-            Path("products/data") / record.file_path.replace(".tif", ".json")
-        )
-        with (MEDIA_ROOT / label_path_stub).open() as stream:
+        label_path_stub = record.file_path.replace(".tif", ".json")
+        with (DATA_ROOT / label_path_stub).open() as stream:
             metadata = json.load(stream)
         return render(
             request,
             "image_view.html",
             {
                 "browse_url": (
-                    "media/products/browse/"
+                    BROWSE_URL
                     + record.file_path.replace(".tif", "_browse.jpg")
                 ),
-                "label_url": "media/" + str(label_path_stub),
+                "label_url": DATA_ROOT + str(label_path_stub),
                 "image_url": record.file_path,
                 "metadata": metadata,
                 "pid": record._pid,
@@ -287,10 +287,9 @@ def imagelist(request):
             "creation_time": row.file_creation_datetime,
             "capture_id": row.capture_id,
             "instrument": row.instrument_name,
-            "image_url": "media/products/data/" + row.file_path,
-            "label_url": "media/products/data/"
-            + row.file_path.replace("tif", "json"),
-            "thumbnail_url": "media/products/browse/"
+            "image_url": DATA_URL + row.file_path,
+            "label_url": DATA_URL + row.file_path.replace("tif", "json"),
+            "thumbnail_url": BROWSE_URL
             + row.file_path.replace(".tif", "_thumb.jpg"),
             "image_request_name": "create",
             "image_request_url": "/imagerequest",

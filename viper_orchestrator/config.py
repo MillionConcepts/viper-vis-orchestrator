@@ -1,4 +1,5 @@
 """orchestrator configuration."""
+import sys
 from pathlib import Path
 
 from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
@@ -45,34 +46,50 @@ BASES = [
 ]
 
 
-# postgres database folder
-TEST_DB_PATH = (Path(__file__).parent / 'vis_db').absolute()
-PROD_DB_PATH = Path("/mnt/db/vis_db")
-DB_PATH = TEST_DB_PATH if TEST is True else PROD_DB_PATH
+def set_up_paths(test: bool = TEST):
+    module = sys.modules[__name__]
+    paths = {
+        # postgres database root directory
+        'TEST_DB_ROOT': (Path(__file__).parent / 'vis_db').absolute(),
+        'PROD_DB_ROOT': Path("/mnt/db/vis_db"),
+        # media directories (web app can only serve files under MEDIA_ROOT)
+        'TEST_MEDIA_ROOT': Path(__file__).parent.parent / "media",
+        'PROD_MEDIA_ROOT': Path("/mnt/media/"),
+        # application and supplementary data logs
+        'TEST_LOG_ROOT': Path(__file__).parent.parent / "logs",
+        'PROD_LOG_ROOT': Path("/mnt/logs/")
+    }
+    which = {True: 'TEST', False: 'PROD'}[test]
+    for pre in ['DB', 'MEDIA', 'LOG']:
+        paths[f'{pre}_ROOT'] = paths[f'{which}_{pre}_ROOT']
 
-# media directories (web app can only serve files under MEDIA_ROOT)
-TEST_MEDIA_ROOT = Path(__file__).parent.parent / "media"
-PROD_MEDIA_ROOT = Path("/mnt/media/")
-MEDIA_ROOT = TEST_MEDIA_ROOT if TEST is True else PROD_MEDIA_ROOT
-PRODUCT_ROOT = MEDIA_ROOT / "products"
-DATA_ROOT = PRODUCT_ROOT / "data"
-BROWSE_ROOT = PRODUCT_ROOT / "browse"
+    # data and browse products (images, labels, etc.)
+    paths['PRODUCT_ROOT'] = paths['MEDIA_ROOT'] / "products"
+    paths['DATA_ROOT'] = paths['PRODUCT_ROOT'] / "data"
+    paths['BROWSE_ROOT'] = paths['PRODUCT_ROOT'] / "browse"
+    # user-uploaded files
+    paths['REQUEST_FILE_ROOT'] = paths['MEDIA_ROOT'] / "request_files"
+    # static files (fonts, css, js, etc.) for web application
+    paths['STATIC_ROOT'] = paths['MEDIA_ROOT'] / "assets"
+    paths['STATION_LOG_ROOT'] = paths['LOG_ROOT'] / "station"
+    paths['LIGHTSTATE_LOG_FILE'] = paths['LOG_ROOT'] / "lightstate.csv"
+    # location of mock data files for testing
+    paths['MOCK_DATA_ROOT'] = (
+        Path(__file__).parent / "mock_data/mock_events_build_9"
+    )
+    paths['MOCK_EVENT_PARQUET'] = paths['MOCK_DATA_ROOT'] / "events.parquet"
+    paths['MOCK_BLOBS_FOLDER'] = paths['MOCK_DATA_ROOT'] / "blobs"
+    roots = (
+        paths['DATA_ROOT'],
+        paths['BROWSE_ROOT'],
+        paths['STATION_LOG_ROOT'],
+        paths['REQUEST_FILE_ROOT'],
+        paths['STATIC_ROOT'],
+    )
+    for root in roots:
+        root.mkdir(parents=True, exist_ok=True)
+    for k, v in paths.items():
+        setattr(module, k, v)
 
-# application and supplementary data logs
-TEST_LOG_ROOT = Path(__file__).parent.parent / "logs"
-PROD_LOG_ROOT = Path("/mnt/logs/")
-LOG_ROOT = TEST_LOG_ROOT if TEST is True else PROD_LOG_ROOT
-STATION_LOG_ROOT = LOG_ROOT / "station"
-LIGHTSTATE_LOG_FILE = LOG_ROOT / "lightstate.csv"
 
-# static files (fonts, css, etc.) for web application
-STATIC_ROOT = MEDIA_ROOT / "assets"
-
-# location of mock data files for testing
-MOCK_DATA_ROOT = Path(__file__).parent / "mock_data/mock_events_build_9"
-MOCK_EVENT_PARQUET = MOCK_DATA_ROOT / "events.parquet"
-MOCK_BLOBS_FOLDER = MOCK_DATA_ROOT / "blobs"
-
-ROOTS = DATA_ROOT, BROWSE_ROOT, LOG_ROOT, STATION_LOG_ROOT
-for root in ROOTS:
-    root.mkdir(parents=True, exist_ok=True)
+set_up_paths()

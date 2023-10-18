@@ -4,11 +4,12 @@ import time
 from pathlib import Path
 
 from hostess.subutils import Viewer
+# noinspection PyUnresolvedReferences
 from viper_orchestrator.config import (
     MEDIA_ROOT,
     ROOTS,
     TEST,
-    DB_PATH,
+    DB_ROOT,
     LIGHTSTATE_LOG_FILE,
 )
 import viper_orchestrator.station.definition as vsd
@@ -17,7 +18,7 @@ import viper_orchestrator.station.definition as vsd
 if TEST is True:
     # clean up, start fresh
     shutil.rmtree(MEDIA_ROOT, ignore_errors=True)
-    shutil.rmtree(DB_PATH, ignore_errors=True)
+    shutil.rmtree(DB_ROOT, ignore_errors=True)
     for folder in ROOTS:
         folder.mkdir(parents=True, exist_ok=True)
     LIGHTSTATE_LOG_FILE.unlink(missing_ok=True)

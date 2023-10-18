@@ -1,6 +1,7 @@
 from pathlib import Path
 from random import randbytes
 
+# noinspection PyUnresolvedReferences
 from viper_orchestrator.config import MEDIA_ROOT, TEST, STATIC_ROOT
 
 TEST_SECRET_KEY = "11111"
@@ -106,7 +107,11 @@ USE_I18N = True
 
 USE_TZ = True
 
-MEDIA_URL = "media/"
+DATA_URL = "data/"
+
+BROWSE_URL = "browse/"
+
+REQUEST_FILE_URL = "request_files/"
 
 STATIC_URL = "assets/"
 
