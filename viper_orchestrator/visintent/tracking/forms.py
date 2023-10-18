@@ -33,6 +33,10 @@ from vipersci.vis.db.ldst import LDST
 from vipersci.vis.db.light_records import luminaire_names
 
 
+AppTable = Union[ImageRequest, ImageRecord, ProtectedListEntry]
+JuncTable = Union[JuncImageRecordTag, JuncImageRequestLDST]
+
+
 def initialize_fields():
     with OSession() as init_session:
         hypotheses = init_session.scalars(select(LDST)).all()
@@ -47,7 +51,7 @@ LDST_IDS = FIELDS["ldst_ids"]
 TAG_NAMES = FIELDS["tags"]
 
 AssociationRule = Mapping[
-    str, Union[str, DeclarativeBase, tuple[str], Callable[[], None]]
+    str, Union[str, JuncTable, tuple[str], Callable[[], None]]
 ]
 
 
@@ -78,7 +82,7 @@ class JunctionForm(forms.Form):
     """
 
     def __init__(self, *args, **kwargs):
-        super().__init__()
+        super().__init__(*args, **kwargs)
         self.associated = {k: [] for k in self.association_rules.keys()}
 
     # noinspection PyTypeChecker

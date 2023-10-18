@@ -1,4 +1,5 @@
-from typing import Collection, Optional
+from typing import Collection, Optional, Union, Mapping, Any, MutableMapping, \
+    Sequence
 
 from cytoolz import keyfilter
 from django.forms import Form
@@ -12,43 +13,51 @@ from viper_orchestrator.db import OSession
 from viper_orchestrator.db.table_utils import image_request_capturesets
 from viper_orchestrator.visintent.tracking.forms import (
     RequestForm,
-    JunctionForm,
+    JunctionForm, AssociationRule, AppTable, JuncTable,
 )
+from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
+from vipersci.vis.db.image_records import ImageRecord
+from vipersci.vis.db.image_requests import ImageRequest
 
 
-def _construct_associations(form: JunctionForm, row: DeclarativeBase):
+def _construct_associations(
+    row: AppTable,
+    form,
+    table: type[JuncTable],
+    kwargspecs: Sequence[Mapping]
+):
     associations, removed = [], []
     with OSession() as session:
-        for table, rules in form.association_rules.items():
-            setattr(form, rules["pivot"][1], getattr(row, rules["pivot"][1]))
-            existing = form.get_associations(rules, session)
-            relations = {i: r for i, r in enumerate(form.associated[table])}
-            for junc_row in existing:
-                matches = [
-                    k
-                    for k, v in relations.items()
-                    if v == getattr(junc_row, rules["junc_pivot"])
-                ]
-                if len(matches) == 0:
-                    removed.append(junc_row)
-                elif len(matches) == 1:
-                    raise InvalidRequestError(
-                        "Only one matching row is expected here; table "
-                        "structure appears invalid"
-                    )
-                else:
-                    match = relations.pop(matches[0])
-                    for attr, val in match.items():
-                        setattr(junc_row, attr, val)
-                    associations.append(junc_row)
-            # leftovers are new relations
-            for v in relations.values():
-                junc_row = table()
-                for attr, val in v.items():
+        rules = form.association_rules[table]
+        setattr(form, rules["pivot"][1], getattr(row, rules['pivot'][1]))
+        existing = form.get_associations(table, session)
+        relations = {i: r for i, r in enumerate(kwargspecs)}
+        for junc_row in existing:
+            matches = [
+                k
+                for k, v in relations.items()
+                if v == getattr(junc_row, rules["junc_pivot"])
+            ]
+            if len(matches) == 0:
+                removed.append(junc_row)
+            elif len(matches) == 1:
+                raise InvalidRequestError(
+                    "Only one matching row is expected here; table "
+                    "contents appear invalid"
+                )
+            else:
+                match = relations.pop(matches[0])
+                for attr, val in match.items():
                     setattr(junc_row, attr, val)
-                # this should already be set on existing junc table rows
-                setattr(junc_row, rules["self_attr"], row)
                 associations.append(junc_row)
+        # leftovers are new relations
+        for v in relations.values():
+            junc_row = table()
+            for attr, val in v.items():
+                setattr(junc_row, attr, val)
+            # this should already be set on existing junc table rows
+            setattr(junc_row, rules["self_attr"], row)
+            associations.append(junc_row)
     return associations, removed
 
 
@@ -109,12 +118,15 @@ def _create_or_update_entry(
             callobj = form.table_class
         row = callobj(**(keyfilter(lambda attr: attr in valid, data)))
     row.request_time = form.request_time
+    associations, removed = [], []
     if isinstance(form, JunctionForm):
-        for table, rows in form.associated.items():
-            if len(rows) == 0:
+        for table, kwargspecs in form.associated.items():
+            if len(kwargspecs) == 0:
                 continue
-            associations, removed = _construct_associations(form, table, row)
-            session.add_all([row, *associations])
-            for r in removed:
-                session.delete(r)
+            a, r = _construct_associations(row, form, table, kwargspecs)
+            associations += a
+            removed += r
+    session.add_all([row, *associations])
+    for r in removed:
+        session.delete(r)
     return row

@@ -129,7 +129,7 @@ def submitrequest(
     with OSession() as session:
         try:
             pivot = "capture_id" if request_id is None else "id"
-            row, associations = _create_or_update_entry(
+            row = _create_or_update_entry(
                 form,
                 session,
                 pivot,
