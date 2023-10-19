@@ -2,6 +2,7 @@
 import datetime as dt
 import json
 import shutil
+from collections import defaultdict
 from typing import Union
 
 from cytoolz import groupby
@@ -283,13 +284,11 @@ def imagelist(request):
         rows = session.scalars(select(ImageRecord)).all()
     # noinspection PyUnresolvedReferences
     rows.sort(key=lambda r: r.start_time, reverse=True)
-    records, capturesets = [], image_request_capturesets()
-    # noinspection PyTypeChecker
+    capturesets = image_request_capturesets()
+    records = defaultdict(list)
     for row in rows:
         record = {
             "product_id": row.product_id,
-            "start_time": row.start_time,
-            "creation_time": row.file_creation_datetime,
             "capture_id": row.capture_id,
             "instrument": row.instrument_name,
             "image_url": DATA_URL + row.file_path,
@@ -306,12 +305,14 @@ def imagelist(request):
         if record["image_request_name"] == "create":
             # i.e., we didn't find an existing request
             record["image_request_url"] += f"?capture_id={row.capture_id}"
-        records.append(record)
+        records['all'].append(record)
+        records[record['instrument'].split(' ')[0]].append(record)
+
     # TODO: paginate, preferably configurably
     return render(
         request,
         "image_list.html",
-        {"records": records, "pagetitle": "Image List"},
+        {"records": dict(records), "pagetitle": "Image List"},
     )
 
 

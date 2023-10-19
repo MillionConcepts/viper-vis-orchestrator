@@ -106,7 +106,6 @@ body {
     overflow: scroll;
 }
 .request-table {
-    display: none;
     border-top: 1px solid var(--silver);
     padding-top: 1rem;
 }
@@ -120,6 +119,17 @@ body {
 .request-table td {
     font-size: 18pt;
     text-align: center;
+}
+.toggle-table {
+    display: none;
+}
+.image-table img {
+    height:5rem;
+    width:5rem;
+    padding-right:1rem;
+}
+.image-table td {
+    font-size: 18pt;
 }
 
 @media (max-width: 90rem) {
