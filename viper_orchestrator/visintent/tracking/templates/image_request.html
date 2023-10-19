@@ -5,22 +5,17 @@
 <form method="POST" action="/submitrequest"
   enctype="multipart/form-data" style="max-width: 50vw"
 >
-    {% if form.capture_id|length > 0 %}
-        <h3>editing intent information for capture id(s) {{ form.capture_id }}</h3>
+    {% if form.id is not None %}
+        <h2>editing image request {{ form.id }}</h2>
+{#        <p class="placeholder-text">placeholder: a way to delete me</p>#}
+        <label for="hidden-request-id-input">
+            <input type="number" style="display: none;" id="hidden-request-id-input" name="request_id" value={{ form.id }}>
+        </label>
         {% if form.product_ids|length > 0 %}
             <h4>associated product ids:</h4>
             {% for product_id in form.product_ids %}{{ product_id }}
             {% endfor %}
         {% endif %}
-        <label for="hidden-capture-id-input">
-            <input type="text" style="display: none;" id="hidden-capture-id-input" name="capture_id" value={{ form.capture_id }}>
-        </label>
-    {% elif form.id is not None %}
-        <h2>editing image request</h2>
-{#        <p class="placeholder-text">placeholder: a way to delete me</p>#}
-        <label for="hidden-request-id-input">
-            <input type="number" style="display: none;" id="hidden-request-id-input" name="request_id" value={{ form.id }}>
-        </label>
     {% else %}
         <h2>new image request</h2>
     {% endif %}

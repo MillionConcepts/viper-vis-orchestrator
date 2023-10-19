@@ -68,7 +68,7 @@ def _create_or_update_entry(
     pivot: str,
     constructor_name: str = None,
     extra_attrs: Optional[Collection[str]] = None,
-) -> tuple[DeclarativeBase, list[DeclarativeBase]]:
+) -> AppTable:
     """
     helper function for processing data from bound Forms into DeclarativeBase
     objects

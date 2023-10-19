@@ -30,7 +30,8 @@ from viper_orchestrator.visintent.tracking.forms import (
     PLSubmission,
     BadURLError,
     AlreadyLosslessError,
-    AlreadyDeletedError, VerificationForm,
+    AlreadyDeletedError,
+    VerificationForm,
 )
 from viper_orchestrator.visintent.tracking.forms import (
     request_supplementary_path,
@@ -39,8 +40,10 @@ from viper_orchestrator.visintent.tracking.tables import (
     CCU_HASH,
     ProtectedListEntry,
 )
-from viper_orchestrator.visintent.visintent.settings import BROWSE_URL, \
-    DATA_URL
+from viper_orchestrator.visintent.visintent.settings import (
+    BROWSE_URL,
+    DATA_URL,
+)
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest, Status
 
@@ -83,7 +86,7 @@ def imageview(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
                 "pid": record._pid,
                 "pagetitle": record._pid,
                 "request_url": request_url,
-                "verification_form": VerificationForm(image_record=record)
+                "verification_form": VerificationForm(image_record=record),
             },
         )
 
@@ -91,7 +94,7 @@ def imageview(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
 @never_cache
 def imagerequest(request: WSGIRequest) -> HttpResponse:
     """render image request form page"""
-    form = RequestForm.from_wsgirequest(request)
+    form = RequestForm.from_wsgirequest(request, submitted=False)
     editing = request.GET.get("editing", True)
     template = "image_request.html" if editing is True else "request_view.html"
     bound = {f.name: f.value for f in tuple(form)}
@@ -128,20 +131,15 @@ def submitrequest(
     handle request submission and redirect to errors or success notification
     as appropriate
     """
-    request_id = request.POST.get("request_id")
-    capture_id = request.POST.get("capture_id")
-    form = RequestForm(
-        request.POST, capture_id=capture_id, request_id=request_id
-    )
+    form = RequestForm.from_wsgirequest(request, submitted=True)
     if form.is_valid() is False:
         return render(request, "image_request.html", {"form": form})
     with OSession() as session:
         try:
-            pivot = "capture_id" if request_id is None else "id"
             row = _create_or_update_entry(
                 form,
                 session,
-                pivot,
+                "id",
                 extra_attrs=(
                     "imaging_mode",
                     "camera_type",
@@ -180,14 +178,14 @@ def requestlist(request):
                 "justification": row.justification,
                 "request_id": row.id,
                 "pagetitle": "Image Request List",
-                "status": row.status.name
+                "status": row.status.name,
             }
             records.append(record)
         # TODO: paginate, preferably configurably
     return render(
         request,
         "request_list.html",
-        {"records": records, "statuses": [s.name for s in Status]}
+        {"records": records, "statuses": [s.name for s in Status]},
     )
 
 
@@ -313,8 +311,8 @@ def imagelist(request):
         if record["image_request_name"] == "create":
             # i.e., we didn't find an existing request
             record["image_request_url"] += f"?capture_id={row.capture_id}"
-        records['all'].append(record)
-        records[record['instrument'].split(' ')[0]].append(record)
+        records["all"].append(record)
+        records[record["instrument"].split(" ")[0]].append(record)
 
     # TODO: paginate, preferably configurably
     return render(

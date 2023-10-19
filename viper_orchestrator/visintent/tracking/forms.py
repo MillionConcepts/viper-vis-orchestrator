@@ -4,7 +4,6 @@ import warnings
 from functools import cached_property
 from typing import Optional, Mapping, Union, Callable
 
-from cytoolz import keyfilter
 from django import forms
 from django.core.exceptions import ValidationError
 from sqlalchemy import select
@@ -14,11 +13,6 @@ from sqlalchemy.orm import Session, DeclarativeBase
 # noinspection PyUnresolvedReferences
 from viper_orchestrator.config import REQUEST_FILE_ROOT
 from viper_orchestrator.db import OSession
-from viper_orchestrator.db.table_utils import (
-    image_request_capturesets,
-    get_capture_ids,
-    capture_ids_to_product_ids,
-)
 from viper_orchestrator.visintent.tracking.tables import (
     ProtectedListEntry,
 )
@@ -198,27 +192,15 @@ class RequestForm(JunctionForm):
     def __init__(
         self,
         *args,
-        capture_id=None,
         image_request: Optional[ImageRequest] = None,
-        request_id=None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.capture_id, self.image_request = capture_id, image_request
-        if self.capture_id is not None and len(self.capture_id) > 0:
-            self.product_ids = capture_ids_to_product_ids(self.capture_id)
-            # want to keep this a string for compatibility with the UI
-            if isinstance(self.capture_id, set):
-                self.capture_id = ",".join(str(ci) for ci in self.capture_id)
-            self.capture_id = self.capture_id.replace(" ", "").strip(",")
-            # make fields not required for already-taken images non-mandatory
-            # and prohibit editing request information
-            for field_name, field in self.fields.items():
-                if field_name not in self.required_intent_fields:
-                    field.required, field.disabled = False, True
-            self.fields['critical'].disabled = False
-            self.fields['luminaires'].initial = None
-        if image_request is not None:
+        self.image_request = image_request
+        if self.image_request is not None:
+            self.product_ids = {
+                r._pid for r in self.image_request.image_records
+            }
             for field_name, field in self.fields.items():
                 if field_name == "compression":
                     field.initial = image_request.compression.name.capitalize()
@@ -229,15 +211,19 @@ class RequestForm(JunctionForm):
                 elif field_name in dir(image_request):
                     field.initial = getattr(image_request, field_name)
             self.id = image_request.id
-            if request_id is not None:
-                warnings.warn(
-                    "request_id and image_request simultaneously passed to "
-                    "RequestForm constructor; undesired behavior may result"
-                )
-        elif request_id is not None:
-            self.id = int(request_id)
-        with OSession() as session:
-            self._populate(session)
+            with OSession() as session:
+                self._populate(session)
+
+        else:
+            self.product_ids = set()
+        if len(self.product_ids) > 0:
+            # make fields not required for already-taken images non-mandatory
+            # and prohibit editing request information
+            for field_name, field in self.fields.items():
+                if field_name not in self.required_intent_fields:
+                    field.required, field.disabled = False, True
+            self.fields['critical'].disabled = False
+            self.fields['luminaires'].initial = None
 
     def filepaths(self):
         # TODO, maybe: is this pathing a little sketchy?
@@ -251,47 +237,22 @@ class RequestForm(JunctionForm):
         return filepath.name, file_url
 
     @classmethod
-    def from_request_id(cls, id):
+    def from_request_id(cls, *args, rid):
         with OSession() as session:
             # noinspection PyTypeChecker
-            selector = select(ImageRequest).where(ImageRequest.id == id)
-            request = session.scalars(selector).one()
-            return cls(
-                capture_id=get_capture_ids(request), image_request=request
-            )
+            selector = select(ImageRequest).where(ImageRequest.id == rid)
+            return cls(*args, image_request=session.scalars(selector).one())
 
     @classmethod
-    def from_capture_id(cls, capture_id):
-        request_id = None
-        cset = set(map(int, str(capture_id).split(",")))
-        for rid, cids in image_request_capturesets().items():
-            if cids == cset:
-                return cls.from_request_id(request_id)
-            elif not cset.isdisjoint(cids):
-                raise ValueError(
-                    "proposed image request overlaps partially with "
-                    "assigned capture ids of an existing image request"
-                )
-        return cls(capture_id=capture_id)
-
-    @classmethod
-    def from_wsgirequest(cls, wsgirequest):
+    def from_wsgirequest(cls, wsgirequest, submitted: bool):
         """intended to be called only from a view function."""
-
-        # identify request by either associated capture id (if it exists!) or
-        # by request primary key
-        info = keyfilter(
-            lambda k: k in ("capture_id", "request_id"), wsgirequest.GET
-        )
-        if ("capture_id" in info) and ("request_id" in info):
-            raise BadURLError(
-                "cannot accept both capture and request id in this URL"
-            )
-        if (rid := info.get("request_id")) is not None:
-            return cls.from_request_id(rid)
-        elif (cid := info.get("capture_id")) is not None:
-            return cls.from_capture_id(cid)
-        return cls()
+        # identify existing request by request primary key
+        info = wsgirequest.POST if submitted is True else wsgirequest.GET
+        args = () if submitted is False else (info,)
+        if (rid := info.get('request_id')) is not None:
+            return cls.from_request_id(*args, rid=rid)
+        # otherwise simply populate / create blank form
+        return cls(*args)
 
     # other fields are only needed for outgoing image requests, not for
     # specifying intent metadata for already-taken images
@@ -321,6 +282,7 @@ class RequestForm(JunctionForm):
                 "style": "height: 10rem",
             }
         ),
+        initial=[],
         choices=[(id_, id_) for id_ in LDST_IDS],
     )
     critical = CarelessMultipleChoiceField(
@@ -504,6 +466,8 @@ class RequestForm(JunctionForm):
 
     def _construct_associations(self):
         """construct JuncImageRequestLDST attrs from form content"""
+        if 'ldst_hypotheses' not in self.cleaned_data:
+            return
         with OSession() as session:
             for hyp in self.cleaned_data["ldst_hypotheses"]:
                 attrs = {
@@ -594,7 +558,6 @@ class RequestForm(JunctionForm):
     # this is actually an optional set of integers, but, in form submission,
     # we retain / parse it as a string for UI reasons. TODO, maybe: clean
     #  that up
-    capture_id: Optional[str] = None
     product_ids: Optional[set[str]] = None
     id: Optional[int] = None
     request_time: Optional[dt.datetime] = None
