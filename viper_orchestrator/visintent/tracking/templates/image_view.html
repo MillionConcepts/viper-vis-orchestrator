@@ -6,12 +6,18 @@
 <div id="layout-container" class="split-flow-container">
     <div
         id="product-container"
-        style="display:flex;flex-direction:row;margin-left:1vw;margin-top:1vh"
+        style="display:flex;
+        flex-direction:row;
+        margin-left:1vw;
+        margin-top:1vh;
+        flex-shrink:1;
+        max-width: 75%;
+        "
     >
         <div
-                id="metadata-panel"
-                class="flex-panel shrinking-text"
-                style="overflow:scroll"
+            id="metadata-panel"
+            class="flex-panel shrinking-text"
+            style="overflow:scroll"
         >
             <h3 class="metadata-header">{{ pid }}</h3>
             {% for field, value in metadata.items %}
@@ -22,12 +28,12 @@
             <img
                 src="{{ browse_url }}"
                 alt="browse image for {{ pid }}"
-                style="max-width: 90%; height:auto;"
+                style="max-width: 100%; height:auto;"
             >
         </div>
     </div>
     {# TODO, maybe: messy, populate styles and maybe text with js #}
-    <div id="status-panel" class="flex-panel" style="flex-shrink:0; font-size: 24px">
+    <div id="status-panel" class="flex-panel" style="flex-shrink: 0;font-size: 24px">
         <div id="link-container">
             <div class="horizontal-plain-links">
                 <p>links:</p>
@@ -40,61 +46,18 @@
         </div>
         <div id="review-status" class="review-container">
         <h4>review status</h4>
-        <p style=";
-        {% if metadata.verified == None %}
-            color: orange;">
-            - not VIS verified
-            <a
-                onclick="toggleVisibility('verification-container', True)"
-                style="color: palegoldenrod; margin-left: 1rem">
-                [verify]</a>
-        {% elif metadata.verified == True %}
-            color: lightgreen;">
-            - passed VIS
-            <a onclick="toggleVisibility('verification-container', True)"
-                style="color: palegreen; margin-left: 1rem">
-                [edit]</a>
-        {% else %}
-            color: salmon;">
-            - failed VIS
-            <a onclick="toggleVisibility('verification', True)"
-                style="color: lightpink; margin-left: 0.5rem">
-                [edit]</a>
-        {% endif %}
-        <p style=";
-        {% if evaluated == "no request" %}
-            color: orange;">
-            - no linked request
-            <a onclick="toggleVisibility('assign-request-form')"
-                style="color: palegoldenrod; margin-left: 0.5rem; margin-right: 0">
-                [assign]</a>
-            <a href="/imagerequest" style="color: palegoldenrod;">[create]</a>
-        {% elif evaluated == "not" %}
-            color: orange;">
-            - not evaluated
-            <a href="{{ request_url}}" style="color: palegoldenrod; margin-left: 1rem">
-                [evaluate]</a>
-        {% elif evaluated == "incomplete" %}
-            color: orange;">
-            - evaluation incomplete
-            <a href="{{ request_url }}" style="color: palegoldenrod; margin-left: 1rem">
-                [continue]</a>
-        {% elif evaluated == "partial" %}
-            color: beige;">
-            - partially passed evaluation
-            <a href="{{ request_url }}" style="color: aliceblue; margin-left: 1rem">
-                [view/edit]</a>
-        {% elif evaluated == "passed" %}
-            color: lightgreen;">
-            - passed evaluation
-            <a href="{{ request_url }}" style="color: palegreen; margin-left: 1rem">
-                [view/edit]</a>
-        {% else %}
-            color: salmon;">
-            - failed evaluation
-            <a href="{{ request_url }}" style="color: lightpink; margin-left: 1rem">
-                [view/edit]</a>
-        {% endif %}
+            <p id="vis-verification-p">
+                <a id="vis-verification-a" style="margin-left:0.25rem"
+                   onclick="toggleVisibility('verification-container', True)"></a>
+            </p>
+            <p id="vis-evaluation-p">
+                <a id="vis-evaluation-a" style="margin-left: 0.25rem; margin-right:0"></a>
+                {% if evaluation == "no request" %}
+                    <a onclick="toggleVisibility('assign-request-form')"
+                       style="color: palegoldenrod; margin-left: 0; margin-right: 0">
+                        [assign]</a>
+                {% endif %}
+            </p>
         <form id="assign-request-form" style="display: none">
             reassign request
         </form>
@@ -102,10 +65,90 @@
      </div>
     </div>
 </div>
-
-
-
-
-
+<script>
+    const verificationStyle = {
+        'None': {
+            'p-color': 'orange',
+            'p-text': '- not VIS verified',
+            'a-color': 'palegoldenrod',
+            'a-text': '[verify]'
+        },
+        'True': {
+            'p-color': 'lightgreen',
+            'p-text': '- passed VIS',
+            'a-color': 'palegreen',
+            'a-text': '[edit]'
+        },
+        'False': {
+            'p-color': 'salmon',
+            'p-text': '- failed VIS',
+            'a-color': 'lightpink',
+            'a-text': '[edit]'
+        }
+    }["{{ metadata.verified }}"]
+    const evaluationStyle = {
+        'no request': {
+            'p-color': 'orange',
+            'p-text': '- no linked request',
+            'a-color': 'palegoldenrod',
+            'a-text': '[create]',
+            'a-href': '/imagerequest?capture_id={{ metadata.capture_id }}'
+        },
+        'not': {
+            'p-color': 'orange',
+            'p-text': '- not evaluated',
+            'a-color': 'palegoldenrod',
+            'a-text': '[evaluate]',
+            'a-href': '{{ request_url }}'
+        },
+        'incomplete': {
+            'p-color': 'orange',
+            'p-text': '- evaluation incomplete',
+            'a-color': 'lightpink',
+            'a-text': '[continue]',
+            'a-href': '{{ request_url }}'
+        },
+        'partial': {
+            'p-color': 'beige',
+            'p-text': '- partially passed evaluation',
+            'a-color': 'aliceblue',
+            'a-text': '[view/edit]',
+            'a-href': '{{ request_url }}'
+        },
+        'passed': {
+            'p-color': 'lightgreen',
+            'p-text': '- passed evaluation',
+            'a-color': 'palegreen',
+            'a-text': '[view/edit]',
+            'a-href': '{{ request_url }}'
+        },
+        'failed': {
+            'p-color': 'salmon',
+            'p-text': '- failed evaluation',
+            'a-color': 'lightpink',
+            'a-text': '[view/edit]',
+            'a-href': '{{ request_url }}'
+        }
+    }["{{ evaluation }}"]
+    const verP = document.getElementById('vis-verification-p')
+    const verA = document.getElementById('vis-verification-a')
+    const evalP = document.getElementById('vis-evaluation-p')
+    const evalA = document.getElementById('vis-evaluation-a')
+    const styleVerificationStatus = function(_event=null) {
+        verP.style.color = verificationStyle['p-color']
+        verA.style.color = verificationStyle['a-color']
+        verA.textContent = verificationStyle['a-text']
+        verP.innerHTML = `${verificationStyle['p-text']} ${verP.innerHTML}`
+    }
+    const styleEvaluationStatus = function(_event=null) {
+        evalP.style.color = evaluationStyle['p-color']
+        evalA.style.color = evaluationStyle['a-color']
+        evalA.textContent = evaluationStyle['a-text']
+        evalA.href = evaluationStyle['a-href']
+        evalP.innerHTML = `${evaluationStyle['p-text']} ${evalP.innerHTML}`
+    }
+    document.addEventListener("DOMContentLoaded", styleVerificationStatus)
+    document.addEventListener("DOMContentLoaded", styleEvaluationStatus)
+</script>
 </body>
 </html>

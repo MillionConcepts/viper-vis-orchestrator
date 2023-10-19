@@ -30,7 +30,7 @@ from viper_orchestrator.visintent.tracking.forms import (
     PLSubmission,
     BadURLError,
     AlreadyLosslessError,
-    AlreadyDeletedError,
+    AlreadyDeletedError, VerificationForm,
 )
 from viper_orchestrator.visintent.tracking.forms import (
     request_supplementary_path,
@@ -63,12 +63,11 @@ def imageview(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
         with (DATA_ROOT / label_path_stub).open() as stream:
             metadata = json.load(stream)
         if record.image_request is None:
-            evaluated, request_url = "no request", None
+            evaluation, request_url = "no request", None
         else:
             request_url = None
             # TODO: add logic
-            evaluated = "not"
-
+            evaluation = "not"
         return render(
             request,
             "image_view.html",
@@ -77,13 +76,14 @@ def imageview(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
                     BROWSE_URL
                     + record.file_path.replace(".tif", "_browse.jpg")
                 ),
-                "evaluated": evaluated,
+                "evaluation": evaluation,
                 "image_url": record.file_path,
                 "label_url": DATA_ROOT / label_path_stub,
                 "metadata": metadata,
                 "pid": record._pid,
                 "pagetitle": record._pid,
-                "request_url": request_url
+                "request_url": request_url,
+                "verification_form": VerificationForm(image_record=record)
             },
         )
 

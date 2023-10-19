@@ -141,7 +141,7 @@ class VerificationForm(JunctionForm):
                     "Cannot find a unique image matching this product ID"
                 )
         self.image_record = image_record
-
+    verified = forms.BooleanField(required=True)
     image_tags = forms.MultipleChoiceField(
         widget=forms.SelectMultiple(
             attrs={"id": "image-tags", "value": "", "placeholder": ""}
@@ -156,7 +156,6 @@ class VerificationForm(JunctionForm):
             }
         )
     )
-    verified = forms.BooleanField(required=True)
 
     @property
     def association_rules(self):
@@ -217,6 +216,8 @@ class RequestForm(JunctionForm):
             for field_name, field in self.fields.items():
                 if field_name not in self.required_intent_fields:
                     field.required, field.disabled = False, True
+            self.fields['critical'].disabled = False
+            self.fields['luminaires'].initial = None
         if image_request is not None:
             for field_name, field in self.fields.items():
                 if field_name == "compression":
@@ -294,7 +295,7 @@ class RequestForm(JunctionForm):
 
     # other fields are only needed for outgoing image requests, not for
     # specifying intent metadata for already-taken images
-    required_intent_fields = ["title", "justification", "ldst"]
+    required_intent_fields = ["title", "justification", "ldst_hypotheses"]
     title = forms.CharField(
         required=True,
         widget=forms.TextInput(
@@ -544,6 +545,8 @@ class RequestForm(JunctionForm):
         UI.
         """
         # note that only aftcams/navcams have imaging_mode
+        if self.fields['camera_request'].disabled is True:
+            return
         request = self.cleaned_data["camera_request"]
         ct, mode = request.split("_", maxsplit=1)
         self.camera_type = ct.upper()
