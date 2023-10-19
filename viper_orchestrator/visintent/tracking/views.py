@@ -46,7 +46,7 @@ from vipersci.vis.db.image_requests import ImageRequest, Status
 
 
 @never_cache
-def image(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
+def imageview(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
     pid = request.path.strip("/")
     with OSession() as session:
         try:
@@ -62,6 +62,13 @@ def image(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
         label_path_stub = record.file_path.replace(".tif", ".json")
         with (DATA_ROOT / label_path_stub).open() as stream:
             metadata = json.load(stream)
+        if record.image_request is None:
+            evaluated, request_url = "no request", None
+        else:
+            request_url = None
+            # TODO: add logic
+            evaluated = "not"
+
         return render(
             request,
             "image_view.html",
@@ -70,12 +77,13 @@ def image(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
                     BROWSE_URL
                     + record.file_path.replace(".tif", "_browse.jpg")
                 ),
-                "label_url": DATA_ROOT / label_path_stub,
+                "evaluated": evaluated,
                 "image_url": record.file_path,
+                "label_url": DATA_ROOT / label_path_stub,
                 "metadata": metadata,
                 "pid": record._pid,
-                "pagetitle": record._pid
-                # TODO: verification link, blah blah blah
+                "pagetitle": record._pid,
+                "request_url": request_url
             },
         )
 

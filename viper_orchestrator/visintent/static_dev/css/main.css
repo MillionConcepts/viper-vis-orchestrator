@@ -52,16 +52,76 @@ body {
     font-weight: 400
 }
 
-.big-link {
-    font-size:1.8rem;
-    margin-left:0;
-    margin-right:1rem;
+h1, h2, h3, h4, .metadata-title {
+    font-family: 'Titillium Web', sans-serif;
+}
+h1, h2, h3, h4, p {
+    margin-bottom: 1rem;
+    padding: 0;
 }
 
+h1 {
+    font-size: 42pt;
+    font-weight: 500;
+}
+
+h2 {
+    font-size: 32pt;
+    margin: 0.25rem 0 0.25rem;
+    font-weight: 500;
+}
+
+h3 {
+    font-size: 24pt;
+    font-weight: 400;
+}
+
+h4 {
+    font-size: 19pt;
+    font-weight: 400
+}
+
+nav {
+    font-size: 21pt;
+}
+
+a {
+    color: var(--celeste);
+    margin: 0;
+    padding: 0;
+    text-decoration: none;
+    vertical-align: baseline;
+}
+a:hover {
+    text-decoration: underline;
+}
+a:visited {
+    color: var(--royal-violet);
+}
+aside {
+    display: block;
+    float: right;
+    width: 390px;
+}
+
+.horizontal-plain-links {
+    display: flex;
+    flex-direction: row;
+
+}
+.horizontal-plain-links p, a {
+    font-size:inherit;
+    margin: 0 1rem 0 0;
+    padding: 0;
+    text-decoration: none;
+    vertical-align: baseline;
+}
 .metadata-header {
     margin-top:0;
 }
-
+.review-container p {
+    font-size: inherit;
+}
 .metadata-row {
     margin:0.1rem;
 }
@@ -163,57 +223,5 @@ body {
     margin-right: 1rem;
     padding-right: 1rem;
     border-right: 2px solid var(--silver)
-}
-
-h1, h2, h3, h4, .metadata-title {
-    font-family: 'Titillium Web', sans-serif;
-}
-h1, h2, h3, h4, p {
-    margin-bottom: 1rem;
-    padding: 0;
-}
-
-h1 {
-    font-size: 42pt;
-    font-weight: 500;
-}
-
-h2 {
-    font-size: 32pt;
-    margin: 0.25rem 0 0.25rem;
-    font-weight: 500;
-}
-
-h3 {
-    font-size: 24pt;
-    font-weight: 400;
-}
-
-h4 {
-    font-size: 19pt;
-    font-weight: 400
-}
-
-nav {
-    font-size: 21pt;
-}
-
-a {
-    color: var(--celeste);
-    margin: 0;
-    padding: 0;
-    text-decoration: none;
-    vertical-align: baseline;
-}
-a:hover {
-    text-decoration: underline;
-}
-a:visited {
-    color: var(--royal-violet);
-}
-aside {
-    display: block;
-    float: right;
-    width: 390px;
 }
 

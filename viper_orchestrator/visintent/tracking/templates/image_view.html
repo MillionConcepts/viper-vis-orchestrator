@@ -26,18 +26,80 @@
             >
         </div>
     </div>
-    <div id="status-panel" class="flex-panel" style="flex-shrink:0">
+    {# TODO, maybe: messy, populate styles and maybe text with js #}
+    <div id="status-panel" class="flex-panel" style="flex-shrink:0; font-size: 24px">
         <div id="link-container">
-            <h3>download</h3>
-            <div id="link-horizontal" style="display:flex;flex-direction:row">
-                <a href="{{ image_url }}" class="big-link">image</a>
-                <a href="{{ browse_url }}" class="big-link">label</a>
+            <div class="horizontal-plain-links">
+                <p>links:</p>
+                <a href="{{ image_url }}">image</a>
+                <a href="{{ browse_url }}">label</a>
+                {% if request_url != None %}
+                <a href="{{ request_url }}">request</a>
+                {% endif %}
             </div>
         </div>
-        <div id="status-container">
-            <h3>Placeholder for review status</h3>
-            <h3>Placeholder for review links</h3>
+        <div id="review-status" class="review-container">
+        <h4>review status</h4>
+        <p style=";
+        {% if metadata.verified == None %}
+            color: orange;">
+            - not VIS verified
+            <a
+                onclick="toggleVisibility('verification-container', True)"
+                style="color: palegoldenrod; margin-left: 1rem">
+                [verify]</a>
+        {% elif metadata.verified == True %}
+            color: lightgreen;">
+            - passed VIS
+            <a onclick="toggleVisibility('verification-container', True)"
+                style="color: palegreen; margin-left: 1rem">
+                [edit]</a>
+        {% else %}
+            color: salmon;">
+            - failed VIS
+            <a onclick="toggleVisibility('verification', True)"
+                style="color: lightpink; margin-left: 0.5rem">
+                [edit]</a>
+        {% endif %}
+        <p style=";
+        {% if evaluated == "no request" %}
+            color: orange;">
+            - no linked request
+            <a onclick="toggleVisibility('assign-request-form')"
+                style="color: palegoldenrod; margin-left: 0.5rem; margin-right: 0">
+                [assign]</a>
+            <a href="/imagerequest" style="color: palegoldenrod;">[create]</a>
+        {% elif evaluated == "not" %}
+            color: orange;">
+            - not evaluated
+            <a href="{{ request_url}}" style="color: palegoldenrod; margin-left: 1rem">
+                [evaluate]</a>
+        {% elif evaluated == "incomplete" %}
+            color: orange;">
+            - evaluation incomplete
+            <a href="{{ request_url }}" style="color: palegoldenrod; margin-left: 1rem">
+                [continue]</a>
+        {% elif evaluated == "partial" %}
+            color: beige;">
+            - partially passed evaluation
+            <a href="{{ request_url }}" style="color: aliceblue; margin-left: 1rem">
+                [view/edit]</a>
+        {% elif evaluated == "passed" %}
+            color: lightgreen;">
+            - passed evaluation
+            <a href="{{ request_url }}" style="color: palegreen; margin-left: 1rem">
+                [view/edit]</a>
+        {% else %}
+            color: salmon;">
+            - failed evaluation
+            <a href="{{ request_url }}" style="color: lightpink; margin-left: 1rem">
+                [view/edit]</a>
+        {% endif %}
+        <form id="assign-request-form" style="display: none">
+            reassign request
+        </form>
         </div>
+     </div>
     </div>
 </div>
 
