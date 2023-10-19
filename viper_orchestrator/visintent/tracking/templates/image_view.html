@@ -48,7 +48,7 @@
         <h4>review status</h4>
             <p id="vis-verification-p">
                 <a id="vis-verification-a" style="margin-left:0.25rem"
-                   onclick="toggleVisibility('verification-container', True)"></a>
+                   onclick="toggleVisibility('verification-container', true)"></a>
             </p>
             <p id="vis-evaluation-p">
                 <a id="vis-evaluation-a" style="margin-left: 0.25rem; margin-right:0"></a>
@@ -58,13 +58,27 @@
                         [assign]</a>
                 {% endif %}
             </p>
-        <form id="assign-request-form" style="display: none">
-            reassign request
+        {% if evaluation != "no request" %}
+        <a
+            id="reassign-anchor"
+            onclick = "toggleVisibility(['assign-request-form', 'reassign-anchor'])">
+        reassign request id</a>
+        {% endif %}
+        <form id="assign-request-form" style="display: none" action="assign_record">
+            {{ assign_request_form }}
+            <label for='hidden-record-id-input' style="display: none"></label>
+            <input
+                id='hidden-record-id-input'
+                name="record_id"
+                style="display: none"
+                value="{{ assign_request_form.image_record.id }}">
+            <button type="submit">assign</button>
         </form>
         </div>
      </div>
     </div>
 </div>
+<script src="{% static 'js/visibility.js' %}"></script>
 <script>
     const verificationStyle = {
         'None': {

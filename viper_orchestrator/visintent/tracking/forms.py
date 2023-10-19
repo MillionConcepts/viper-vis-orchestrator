@@ -68,6 +68,53 @@ class CarelessMultipleChoiceField(forms.MultipleChoiceField):
         pass
 
 
+class AssignRecordForm(forms.Form):
+
+    def __init__(self, *args, rec_id):
+        super().__init__(*args)
+        try:
+            with OSession() as session:
+                selector = select(ImageRecord).where(ImageRecord.id == rec_id)
+                self.image_record = session.scalars(selector).one()
+        except InvalidRequestError:
+            raise ValidationError(f"no ImageRecord with id {rec_id} exists")
+
+    request_id = forms.IntegerField(
+        widget=forms.TextInput(
+            attrs={"id": "request-id-entry", "value": ""}
+        ),
+    )
+
+    def clean(self):
+        super().clean()
+        try:
+            req_id = int(self.cleaned_data['request_id'])
+        except ValueError:
+            raise ValidationError("request id must be an integer")
+        with OSession() as session:
+            try:
+                sel = select(ImageRequest).where(ImageRequest.id == req_id)
+                self.image_request = session.scalars(sel).one()
+                if self.image_request == self.image_record.image_request:
+                    self.former_request = None
+            except InvalidRequestError:
+                raise ValidationError(
+                    f"No ImageRequest with id {req_id} exists"
+                )
+            # try:
+            #     # TODO: in_, etc.
+            #     sel = select(ImageRequest.where(self.image_recordImageRequest.image_records)
+
+    # def update_db(self):
+    #
+    #     request.image_records.append(self.image_record)
+    #     session.add(request)
+    #     session.commit()
+
+    former_image_request: ImageRequest
+    image_request: ImageRequest
+
+
 class JunctionForm(forms.Form):
     """
     "abstract" class for forms that help manage SQLAlchemy many-to-many

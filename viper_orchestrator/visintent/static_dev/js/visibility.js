@@ -35,3 +35,27 @@ const addCounts = function(_event) {
         anchor.innerText = anchor.innerText.concat(` (${nRows})`)
     })
 }
+const toggleVisibility = function(id, visible= null, style = "inherit") {
+    const elements = [];
+    if (id instanceof Array) {
+        id.forEach(i => elements.push(document.getElementById(i)))
+    }
+    else {
+        elements.push(document.getElementById(id))
+    }
+    if (visible === true) {
+        elements.forEach(element => element.style.display = style)
+    }
+    else if (visible === false) {
+        elements.forEach(element => element.style.display = "none")
+    }
+    else if (visible === null) {
+        elements.forEach(
+            element =>
+            element.style.display = element.style.display === "none" ? style : "none"
+        )
+    }
+    else {
+        throw `invalid visibility directive ${visible}`
+    }
+}

@@ -11,11 +11,7 @@ urlpatterns = [
     path("success", views.requestsuccess, name="success"),
     path("imagelist", views.imagelist, name="imagelist"),
     path("requestlist", views.requestlist, name="requestlist"),
-    path(
-        "assign_records_from_capture_id",
-        views.assign_records_from_capture_ids,
-        name="assign_records_from_capture_id",
-    ),
+    path("assign_record", views.assign_record, name="assign_record"),
     path("plrequest", views.plrequest, name="plrequest"),
     path("submitplrequest", views.submitplrequest, name="submitplrequest"),
     path("pllist", views.pllist, name="protectedlist"),

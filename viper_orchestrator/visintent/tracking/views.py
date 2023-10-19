@@ -18,9 +18,6 @@ from viper_orchestrator.config import DATA_ROOT, PRODUCT_ROOT
 from viper_orchestrator.db import OSession
 from viper_orchestrator.db.table_utils import (
     image_request_capturesets,
-    get_capture_ids,
-    get_record_ids,
-    records_from_capture_ids,
 )
 from viper_orchestrator.visintent.tracking.db_utils import (
     _create_or_update_entry,
@@ -31,7 +28,8 @@ from viper_orchestrator.visintent.tracking.forms import (
     BadURLError,
     AlreadyLosslessError,
     AlreadyDeletedError,
-    VerificationForm,
+    VerificationForm, 
+    AssignRecordForm,
 )
 from viper_orchestrator.visintent.tracking.forms import (
     request_supplementary_path,
@@ -46,6 +44,8 @@ from viper_orchestrator.visintent.visintent.settings import (
 )
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest, Status
+
+ResponseType = Union[HttpResponse, HttpResponseRedirect]
 
 
 @never_cache
@@ -71,10 +71,12 @@ def imageview(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
             request_url = None
             # TODO: add logic
             evaluation = "not"
+        assign_request_form = AssignRecordForm(rec_id=record.id)
         return render(
             request,
             "image_view.html",
             {
+                "assign_request_form": assign_request_form,
                 "browse_url": (
                     BROWSE_URL
                     + record.file_path.replace(".tif", "_browse.jpg")
@@ -124,9 +126,7 @@ def imagerequest(request: WSGIRequest) -> HttpResponse:
 
 
 @never_cache
-def submitrequest(
-    request: WSGIRequest,
-) -> Union[HttpResponse, HttpResponseRedirect]:
+def submitrequest(request: WSGIRequest) -> ResponseType:
     """
     handle request submission and redirect to errors or success notification
     as appropriate
@@ -323,32 +323,20 @@ def imagelist(request):
 
 
 @never_cache
-def assign_records_from_capture_ids(
-    request: WSGIRequest,
-) -> Union[HttpResponse, HttpResponseRedirect]:
-    """(re)assign capture ids to an image request"""
-    # TODO: better error messages
-    cids = request.GET["capture-id"]
-    cids = None if cids.lower() in ("none", "") else cids
-    if cids is not None:
-        try:
-            cids = tuple(map(int, cids.replace(" ", "").strip(",").split(",")))
-        except (ValueError, AttributeError, TypeError):
-            return HttpResponse(
-                "capture id(s) must be 'none' (case-insensitive), blank, a "
-                "base-10 integer, or a comma-separated list of base-10 "
-                "integers"
-            )
-    with OSession() as session:
+def assign_record(request: WSGIRequest) -> ResponseType:
+    """associate an ImageRecord with an ImageRequest"""
+        with OSession() as session:
         # noinspection PyTypeChecker
-        selector = select(ImageRequest).where(
-            request.GET["id"] == ImageRequest.id
+        request_selector = select(ImageRequest).where(
+            int(request.GET["request_id"]) == ImageRequest.id
         )
-        # TODO, maybe: assign capture even if there are no imagerecords
-        #  as of yet
-        image_request = session.scalars(selector).one()
-        records = records_from_capture_ids(cids, session)
-        if get_record_ids(records) == get_record_ids(image_request):
+        image_request = session.scalars(request_selector).one()
+        record_selector = select(ImageRecord).where(
+            int(request.GET["record_id"]) == ImageRecord.id
+        )
+        image_record = session.scalars(record_selector).one()
+        if image_record in image_request.image_records:
+            # TODO; redirect to whereever they came from
             return redirect("/requestlist")
         try:
             image_request.image_records = records
