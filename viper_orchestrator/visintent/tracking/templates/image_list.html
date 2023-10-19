@@ -19,10 +19,12 @@
             {% for image in images %}
             <tr>
                 <td>
+                    <a href="/{{ image.product_id }}">
                     <img
                         src="{{ image.thumbnail_url }}"
                         alt="thumbnail for {{ image.product_id }}"
                     >
+                    </a>
                 </td>
                 <td>
                     <a href="/{{ image.product_id }}">{{ image.product_id }}</a>
