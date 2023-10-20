@@ -20,7 +20,7 @@ from viper_orchestrator.db.table_utils import (
     image_request_capturesets,
 )
 from viper_orchestrator.visintent.tracking.db_utils import (
-    _create_or_update_entry,
+    _create_or_update_entry, autosession,
 )
 from viper_orchestrator.visintent.tracking.forms import (
     RequestForm,
@@ -49,48 +49,50 @@ ResponseType = Union[HttpResponse, HttpResponseRedirect]
 
 
 @never_cache
-def imageview(request: WSGIRequest, **_regex_kwargs) -> HttpResponse:
-    pid = request.path.strip("/")
-    with OSession() as session:
-        try:
-            record = session.scalars(
-                select(ImageRecord).where(ImageRecord._pid == pid)
-            ).one()
-        except InvalidRequestError:
-            return HttpResponse(
-                f"Sorry, no images exist in the database with product id "
-                f"{pid}.",
-                status=404,
-            )
-        label_path_stub = record.file_path.replace(".tif", ".json")
-        with (DATA_ROOT / label_path_stub).open() as stream:
-            metadata = json.load(stream)
-        if record.image_request is None:
-            evaluation, request_url = "no request", None
-        else:
-            request_url = None
-            # TODO: add logic
-            evaluation = "not"
-        assign_request_form = AssignRecordForm(rec_id=record.id)
-        return render(
-            request,
-            "image_view.html",
-            {
-                "assign_request_form": assign_request_form,
-                "browse_url": (
-                    BROWSE_URL
-                    + record.file_path.replace(".tif", "_browse.jpg")
-                ),
-                "evaluation": evaluation,
-                "image_url": record.file_path,
-                "label_url": DATA_ROOT / label_path_stub,
-                "metadata": metadata,
-                "pid": record._pid,
-                "pagetitle": record._pid,
-                "request_url": request_url,
-                "verification_form": VerificationForm(image_record=record),
-            },
+@autosession
+def imageview(
+    request: WSGIRequest, session=None, **_regex_kwargs
+) -> HttpResponse:
+    pid = request.GET.get()
+    try:
+        record = session.scalars(
+            select(ImageRecord).where(ImageRecord._pid == pid)
+        ).one()
+    except InvalidRequestError:
+        return HttpResponse(
+            f"Sorry, no images exist in the database with product id "
+            f"{pid}.",
+            status=404,
         )
+    label_path_stub = record.file_path.replace(".tif", ".json")
+    with (DATA_ROOT / label_path_stub).open() as stream:
+        metadata = json.load(stream)
+    if record.image_request is None:
+        evaluation, request_url = "no request", None
+    else:
+        request_url = None
+        # TODO: add logic
+        evaluation = "not"
+    assign_request_form = AssignRecordForm(rec_id=record.id)
+    return render(
+        request,
+        "image_view.html",
+        {
+            "assign_request_form": assign_request_form,
+            "browse_url": (
+                BROWSE_URL
+                + record.file_path.replace(".tif", "_browse.jpg")
+            ),
+            "evaluation": evaluation,
+            "image_url": record.file_path,
+            "label_url": DATA_ROOT / label_path_stub,
+            "metadata": metadata,
+            "pid": record._pid,
+            "pagetitle": record._pid,
+            "request_url": request_url,
+            "verification_form": VerificationForm(image_record=record),
+        },
+    )
 
 
 @never_cache
@@ -284,10 +286,10 @@ def requestsuccess(request):
 
 
 @never_cache
-def imagelist(request):
+@autosession
+def imagelist(request, session=None):
     """prep and render list of all existing images"""
-    with OSession() as session:
-        rows = session.scalars(select(ImageRecord)).all()
+    rows = session.scalars(select(ImageRecord)).all()
     # noinspection PyUnresolvedReferences
     rows.sort(key=lambda r: r.start_time, reverse=True)
     capturesets = image_request_capturesets()
@@ -323,27 +325,27 @@ def imagelist(request):
 
 
 @never_cache
-def assign_record(request: WSGIRequest) -> ResponseType:
+@autosession
+def assign_record(request: WSGIRequest, session=None) -> ResponseType:
     """associate an ImageRecord with an ImageRequest"""
-        with OSession() as session:
-        # noinspection PyTypeChecker
-        request_selector = select(ImageRequest).where(
-            int(request.GET["request_id"]) == ImageRequest.id
-        )
-        image_request = session.scalars(request_selector).one()
-        record_selector = select(ImageRecord).where(
-            int(request.GET["record_id"]) == ImageRecord.id
-        )
-        image_record = session.scalars(record_selector).one()
-        if image_record in image_request.image_records:
-            # TODO; redirect to whereever they came from
-            return redirect("/requestlist")
-        try:
-            image_request.image_records = records
-            image_request.request_time = dt.datetime.now()
-        except ValueError as ve:
-            return HttpResponse(str(ve))
-        session.commit()
+    # noinspection PyTypeChecker
+    request_selector = select(ImageRequest).where(
+        int(request.GET["request_id"]) == ImageRequest.id
+    )
+    image_request = session.scalars(request_selector).one()
+    record_selector = select(ImageRecord).where(
+        int(request.GET["record_id"]) == ImageRecord.id
+    )
+    image_record = session.scalars(record_selector).one()
+    if image_record in image_request.image_records:
+        # TODO; redirect to whereever they came from
+        return redirect("/requestlist")
+    try:
+        image_request.image_records = records
+        image_request.request_time = dt.datetime.now()
+    except ValueError as ve:
+        return HttpResponse(str(ve))
+    session.commit()
     return redirect("/requestlist")
 
 

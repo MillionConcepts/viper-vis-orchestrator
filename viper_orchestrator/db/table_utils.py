@@ -2,11 +2,21 @@
 from typing import Collection, Union
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, DeclarativeBase
 
 from viper_orchestrator.db import OSession
 from vipersci.vis.db.image_records import ImageRecord, ImageType
 from vipersci.vis.db.image_requests import ImageRequest
+
+
+def sa_attached(row: DeclarativeBase):
+    """is this object attached to a SQLAlchemy Session?"""
+    return row.__getstate__()['_sa_instance_state'].session is not None
+
+
+def sa_attached_to(row: DeclarativeBase, session: Session):
+    """is this object attached to this particular SQLAlchemy Session?"""
+    return row.__getstate__()['_sa_instance_state'].session is session
 
 
 def intsplit(comma_separated_numbers: str) -> set[int]:
