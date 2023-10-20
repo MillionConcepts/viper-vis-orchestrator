@@ -224,4 +224,15 @@ aside {
     padding-right: 1rem;
     border-right: 2px solid var(--silver)
 }
-
+.record-assign label {
+    margin-right: 0.25rem;
+}
+.record-assign input {
+    max-width: 1rem;
+    color: var(--silver);
+    background-color: var(--night-black);
+    font-size: 16pt;
+    font-weight:400;
+    border: 1px solid white;
+    padding-top:0.1rem;
+}

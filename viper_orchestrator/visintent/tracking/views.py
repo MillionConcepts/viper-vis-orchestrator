@@ -16,11 +16,9 @@ from sqlalchemy.exc import InvalidRequestError
 # noinspection PyUnresolvedReferences
 from viper_orchestrator.config import DATA_ROOT, PRODUCT_ROOT
 from viper_orchestrator.db import OSession
+from viper_orchestrator.db.session import autosession, get_one
 from viper_orchestrator.db.table_utils import (
     image_request_capturesets,
-)
-from viper_orchestrator.visintent.tracking.db_utils import (
-    _create_or_update_entry, autosession,
 )
 from viper_orchestrator.visintent.tracking.forms import (
     RequestForm,
@@ -51,34 +49,38 @@ ResponseType = Union[HttpResponse, HttpResponseRedirect]
 @never_cache
 @autosession
 def imageview(
-    request: WSGIRequest, session=None, **_regex_kwargs
+    request: WSGIRequest,
+    session=None,
+    assign_record_form=None,
+    pid=None,
+    **_regex_kwargs
 ) -> HttpResponse:
-    pid = request.GET.get()
+    if pid is None:
+        pid = request.path.strip('/')
     try:
-        record = session.scalars(
-            select(ImageRecord).where(ImageRecord._pid == pid)
-        ).one()
+        record = get_one(ImageRecord, pid, "_pid", session=session)
     except InvalidRequestError:
         return HttpResponse(
-            f"Sorry, no images exist in the database with product id "
-            f"{pid}.",
-            status=404,
+            f"No image in the database has product id {pid}.", status=404,
         )
     label_path_stub = record.file_path.replace(".tif", ".json")
     with (DATA_ROOT / label_path_stub).open() as stream:
         metadata = json.load(stream)
     if record.image_request is None:
-        evaluation, request_url = "no request", None
+        evaluation, request_url, req_id = "no request", None, ""
     else:
-        request_url = None
         # TODO: add logic
+        request_url, req_id = None, record.image_request.id
         evaluation = "not"
-    assign_request_form = AssignRecordForm(rec_id=record.id)
+        # this will usually be None in the on-disk labels
+        metadata['image_request_id'] = req_id
+    if assign_record_form is None:
+        assign_record_form = AssignRecordForm(rec_id=record.id, req_id=req_id)
     return render(
         request,
         "image_view.html",
         {
-            "assign_request_form": assign_request_form,
+            "assign_record_form": assign_record_form,
             "browse_url": (
                 BROWSE_URL
                 + record.file_path.replace(".tif", "_browse.jpg")
@@ -93,6 +95,22 @@ def imageview(
             "verification_form": VerificationForm(image_record=record),
         },
     )
+
+
+
+@never_cache
+@autosession
+def assign_record(request: WSGIRequest, session=None) -> ResponseType:
+    """associate an ImageRecord with an ImageRequest"""
+    from viper_orchestrator.visintent.tracking.forms import AssignRecordForm
+    form = AssignRecordForm(request.POST)
+    if not form.is_valid():
+        return imageview(
+            request, pid=request.POST['pid'], assign_record_form=form
+        )
+    form.commit()
+    return imageview(request, pid=request.POST['pid'])
+
 
 
 @never_cache
@@ -322,31 +340,6 @@ def imagelist(request, session=None):
         "image_list.html",
         {"records": dict(records), "pagetitle": "Image List"},
     )
-
-
-@never_cache
-@autosession
-def assign_record(request: WSGIRequest, session=None) -> ResponseType:
-    """associate an ImageRecord with an ImageRequest"""
-    # noinspection PyTypeChecker
-    request_selector = select(ImageRequest).where(
-        int(request.GET["request_id"]) == ImageRequest.id
-    )
-    image_request = session.scalars(request_selector).one()
-    record_selector = select(ImageRecord).where(
-        int(request.GET["record_id"]) == ImageRecord.id
-    )
-    image_record = session.scalars(record_selector).one()
-    if image_record in image_request.image_records:
-        # TODO; redirect to whereever they came from
-        return redirect("/requestlist")
-    try:
-        image_request.image_records = records
-        image_request.request_time = dt.datetime.now()
-    except ValueError as ve:
-        return HttpResponse(str(ve))
-    session.commit()
-    return redirect("/requestlist")
 
 
 def pages(request):

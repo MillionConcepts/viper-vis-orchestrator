@@ -1,26 +1,19 @@
 """conventional django forms module"""
 import datetime as dt
-import warnings
-from collections import defaultdict
 from functools import cached_property
-from typing import Optional, Mapping, Union, Callable
+from typing import Optional
 
-from cytoolz import keyfilter
 from django import forms
 from django.core.exceptions import ValidationError
 from sqlalchemy import select
-from sqlalchemy.exc import InvalidRequestError, NoResultFound
-from sqlalchemy.orm import Session, DeclarativeBase
+from sqlalchemy.exc import InvalidRequestError
 
-from func import get_argnames
 # noinspection PyUnresolvedReferences
 from viper_orchestrator.config import REQUEST_FILE_ROOT
 from viper_orchestrator.db import OSession
-from viper_orchestrator.db.table_utils import sa_attached_to
-from viper_orchestrator.visintent.tracking.db_utils import autosession
-from viper_orchestrator.visintent.tracking.tables import (
-    ProtectedListEntry,
-)
+from viper_orchestrator.db.session import autosession, get_one
+from viper_orchestrator.visintent.tracking.sa_forms import JunctionForm
+from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
 from viper_orchestrator.visintent.visintent.settings import REQUEST_FILE_URL
 from vipersci.pds.pid import vis_instruments, vis_instrument_aliases
 from vipersci.vis.db.image_records import ImageRecord
@@ -30,10 +23,6 @@ from vipersci.vis.db.junc_image_record_tags import JuncImageRecordTag
 from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
 from vipersci.vis.db.ldst import LDST
 from vipersci.vis.db.light_records import luminaire_names
-
-
-AppTable = Union[ImageRequest, ImageRecord, ProtectedListEntry]
-JuncTable = Union[JuncImageRecordTag, JuncImageRequestLDST]
 
 
 def initialize_fields():
@@ -48,10 +37,6 @@ def initialize_fields():
 FIELDS = initialize_fields()
 LDST_IDS = FIELDS["ldst_ids"]
 TAG_NAMES = FIELDS["tags"]
-
-AssociationRule = Mapping[
-    str, Union[str, JuncTable, tuple[str], Callable[[], None]]
-]
 
 
 class BadURLError(ValueError):
@@ -74,222 +59,61 @@ class CarelessMultipleChoiceField(forms.MultipleChoiceField):
 
 
 class AssignRecordForm(forms.Form):
+    """very simple form for associating an ImageRecord with an ImageRequest."""
 
-    def __init__(self, *args, rec_id):
+    @autosession
+    def __init__(self, *args, rec_id=None, req_id=None, session=None):
         super().__init__(*args)
+        if self.is_bound:
+            self.rec_id = int(args[0]['rec_id'])
+            return
         try:
-            with OSession() as session:
-                selector = select(ImageRecord).where(ImageRecord.id == rec_id)
-                self.image_record = session.scalars(selector).one()
+            self.req_id, self.rec_id = int(req_id), int(rec_id)
+            # TODO: inefficient to do this lookup twice but I don't want to
+            #  keep the session alive forever or pretend it's ok at init
+            get_one(ImageRecord, self.rec_id, session=session)
+        except ValueError:
+            raise ValueError("ids must be integers")
         except InvalidRequestError:
             raise ValidationError(f"no ImageRecord with id {rec_id} exists")
+        self.fields['req_id'].initial = self.req_id
 
-    request_id = forms.IntegerField(
+    req_id = forms.IntegerField(
+        label="request id",
         widget=forms.TextInput(
             attrs={"id": "request-id-entry", "value": ""}
         )
     )
 
-    def clean(self):
+    @autosession
+    def clean(self, session=None):
         super().clean()
         try:
-            req_id = int(self.cleaned_data['request_id'])
+            self.req_id = int(self.cleaned_data['req_id'])
         except ValueError:
             raise ValidationError("request id must be an integer")
-        with OSession() as session:
-            try:
-                sel = select(ImageRequest).where(ImageRequest.id == req_id)
-                self.image_request = session.scalars(sel).one()
-                if self.image_request == self.image_record.image_request:
-                    self.former_request = None
-            except InvalidRequestError:
-                raise ValidationError(
-                    f"No ImageRequest with id {req_id} exists"
-                )
-            # try:
-            #     # TODO: in_, etc.
-            #     sel = select(ImageRequest.where(self.image_recordImageRequest.image_records)
-
-    # def update_db(self):
-    #
-    #     request.image_records.append(self.image_record)
-    #     session.add(request)
-    #     session.commit()
-
-    former_image_request: ImageRequest
-    image_request: ImageRequest
-
-
-class SAForm(forms.Form):
-    """abstract-ish class for forms that help manage SQLAlchemy ORM objects"""
-
-    def get_row(
-        self,
-        session: Optional[Session] = None,
-        force_remake: bool = False,
-        constructor_method: Optional[str] = None
-    ) -> AppTable:
-        if (
-            (self._row is not None)
-            and sa_attached_to(self._row, session)
-            and (force_remake is False)
-        ):
-            return self._row
-        data = {k: v for k, v in self.cleaned_data.items()}
-        data |= {attr: getattr(self, attr) for attr in self.extra_attrs}
+        # TODO, maybe: inefficient to do this lookup twice but i really want
+        #  to be able to automatically place the error on the form
         try:
-            if hasattr(self, self.pivot):
-                ref = getattr(self, self.pivot)
-            elif self.pivot in self.base_fields.keys():
-                ref = self.cleaned_data[self.pivot]
-            else:
-                raise NotImplementedError
-        except (NotImplementedError, AttributeError):
-            raise TypeError("self.pivot not well-defined")
-        except TypeError:
-            raise TypeError("mangled pivot definition")
-        except KeyError:
-            raise ValueError(
-                f"defined pivot {self.pivot} not an attribute of self or a "
-                f"member of self.base_fields"
-            )
-        try:
-            selector = select(self.table_class).where(
-                getattr(self.table_class, self.pivot) == ref
-            )
-            row = session.scalars(selector).one()
-            for k, v in data.items():
-                setattr(row, k, v)
-            self._row = row
-        except NoResultFound:
-            data[self.pivot] = ref
-            valid = set(dir(self.table_class))
-            if constructor_method is None:
-                constructor = self.table_class
-            else:
-                constructor = getattr(self.table_class, constructor_method)
-                valid.update(get_argnames(constructor))
-            self._row = constructor(
-                **(keyfilter(lambda attr: attr in valid, data))
-            )
-        return self._row
+            get_one(ImageRequest, self.req_id, session=session)
+        except InvalidRequestError:
+            raise ValidationError(f"ImageRequest {self.req_id} does not exist")
 
     @autosession
-    def commit(
-        self, session=None, force_remake=False, constructor_method=None
-    ):
-        session.add(self.get_row(session, force_remake, constructor_method))
-        session.commit()
-
-    _row: AppTable = None
-    pivot: str = "id"
-    table_class: type[AppTable]
-    extra_attrs: tuple[str] = ()
-
-
-class JunctionForm(SAForm):
-    """
-    abstract-ish class for forms that help manage SQLAlchemy many-to-many
-    relationships (django's metaclass structure prevents us from making it an
-    actual ABC)
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._associations = {k: {} for k in self.association_rules.keys()}
-        self.assocation_specs = {k: [] for k in self.association_rules.keys()}
-
-    @autosession
-    # noinspection PyTypeChecker
-    def get_associations(
-        self,
-        table: type[JuncTable],
-        session: Optional[Session] = None,
-        force_remake: bool = False
-    ) -> dict[str, JuncTable]:
-        if 'existing' in (ad := self._associations[table]).keys():
-            juncs = set(ad.get('present', ())).union(ad.get('missing', ()))
-            if (
-                all(sa_attached_to(j, session) for j in juncs)
-                and force_remake is False
-            ):
-                return self._associations[table]
-        rules = self.association_rules[table]
-        junc_reference, referent = rules["pivot"]
-        # noinspection PyTypeChecker
-        exist_selector = select(table).where(
-            getattr(table, junc_reference) == getattr(self, referent)
-        )
-        adict = defaultdict(list)
-        # noinspection PyTypeChecker
-        adict['existing'] = session.scalars(exist_selector).all()
-        specs = {i: s for i, s in enumerate(self.assocation_specs[table])}
-        for junc_row in adict['existing']:
-            matches = [
-                (i, s) for i, s in specs.items()
-                if s == getattr(junc_row, rules["junc_pivot"])
+    def commit(self, session=None):
+        image_request = get_one(ImageRequest, self.req_id, session=session)
+        image_record = get_one(ImageRecord, self.rec_id, session=session)
+        former_request = image_record.image_request
+        if former_request == image_request:
+            return  # nothing to do!
+        image_request.image_records.append(image_record)
+        session.add(image_request)
+        if former_request is not None:
+            former_request.image_records = [
+                r for r in former_request.image_records if r != image_record
             ]
-            # mark table entries not specified in this form for deletion
-            if len(matches) == 0:
-                adict['missing'].append(junc_row)
-            elif len(matches) > 1:
-                raise InvalidRequestError(
-                    "Only one matching row is expected here; table "
-                    "contents appear invalid"
-                )
-            # update fields of existing and specified table entries
-            else:
-                for attr, val in matches[0][1].items():
-                    setattr(junc_row, attr, val)
-                adict['present'].append(junc_row)
-                specs.pop(matches[0][0])
-        # leftover specs are new table entries
-        if len(specs) > 0:
-            # shouldn't need to define self_attr on existing junc table rows
-            row = self.get_row(session)
-            for s in specs.values():
-                junc_row = table()
-                # TODO, maybe: sloppy?
-                for attr, val in s.items():
-                    setattr(junc_row, attr, val)
-                setattr(junc_row, rules["self_attr"], row)
-        self._associations[table] = dict(adict)
-        return self._associations[table]
-
-    @autosession
-    def commit(
-        self, session=None, force_remake=False, constructor_method=None
-    ):
-        removed = []
-        for table in self.association_rules.keys():
-            associations = self.get_associations(table, session, force_remake)
-            session.add_all(associations['existing'])
-            removed += associations['missing']
-        row = self.get_row(session, force_remake, constructor_method)
-        session.add(row)
-        for r in removed:
-            session.delete(r)
+            session.add(former_request)
         session.commit()
-
-    @autosession
-    def _populate(self, session: Optional[Session] = None):
-        for table, rules in self.association_rules.items():
-            existing = self.get_associations(table, session)
-            if len(existing) != 0:
-                rules["populator"](existing)
-
-    @cached_property
-    def associated_form_fields(self):
-        return set(
-            filter(
-                None,
-                (r.get("form_field") for r in self.association_rules.values()),
-            )
-        )
-
-    _associations: dict[type[JuncTable, dict[str, list[JuncTable]]]]
-    association_rules: Mapping[type[JuncTable], AssociationRule]
-    assocation_specs: dict[type[JuncTable], list[dict]]
 
 
 class VerificationForm(JunctionForm):
@@ -354,20 +178,20 @@ class VerificationForm(JunctionForm):
             tag_names.append(row.name)
         self.fields["image_tags"].initial = tag_names
 
-    def _construct_associations(self):
+    @autosession
+    def _construct_image_tag_attrs(self, session=None):
         """construct JuncImageRecordTag attrs from form content"""
-        with OSession() as session:
-            for tag in self.cleaned_data["image_tags"]:
-                attrs = {
-                    "name": session.scalars(
-                        select(ImageTag).where(ImageTag.name == tag)
-                    )
-                }
-            self.associated[JuncImageRecordTag].append(attrs)
+        for tag in self.cleaned_data["image_tags"]:
+            attrs = {
+                "name": session.scalars(
+                    select(ImageTag).where(ImageTag.name == tag)
+                )
+            }
+            self.assocation_specs[JuncImageRecordTag].append(attrs)
 
     def clean(self):
         super().clean()
-        self._construct_associations()
+        self._construct_image_tag_attrs()
 
 
 class RequestForm(JunctionForm):
@@ -396,7 +220,7 @@ class RequestForm(JunctionForm):
                     field.initial = getattr(image_request, field_name)
             self.id = image_request.id
             with OSession() as session:
-                self._populate(session)
+                self._populate_junc_fields(session)
 
         else:
             self.product_ids = set()
@@ -760,7 +584,7 @@ class AlreadyDeletedError(ValidationError):
     pass
 
 
-class PLSubmission(forms.Form):
+class PLSubmission(JunctionForm):
     """form for submitting an entry to the PL"""
 
     def __init__(self, *args, product_id=None, pl_id=None, **kwargs):

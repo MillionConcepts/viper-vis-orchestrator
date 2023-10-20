@@ -1,5 +1,7 @@
+from functools import wraps
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 
@@ -21,3 +23,22 @@ class OSession:
         self.session = None
 
     session = None
+
+
+def autosession(func, manager=OSession):
+    @wraps(func)
+    def with_session(*args, session=None, **kwargs):
+        if session is None:
+            with manager() as session:
+                return func(*args, session=session, **kwargs)
+        return func(*args, session=session, **kwargs)
+
+    return with_session
+
+
+# noinspection PyTypeChecker
+@autosession
+def get_one(table, value, pivot="id", session=None):
+    return session.scalars(
+        select(table).where(getattr(table, pivot) == value)
+    ).one()

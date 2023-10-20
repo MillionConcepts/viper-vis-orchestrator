@@ -53,27 +53,43 @@
             <p id="vis-evaluation-p">
                 <a id="vis-evaluation-a" style="margin-left: 0.25rem; margin-right:0"></a>
                 {% if evaluation == "no request" %}
-                    <a onclick="toggleVisibility('assign-request-form')"
+                    <a onclick="toggleVisibility('assign-record-form')"
                        style="color: palegoldenrod; margin-left: 0; margin-right: 0">
                         [assign]</a>
                 {% endif %}
             </p>
+        <div id="request-display-format" style="display:flex;flex-direction: row">
         {% if evaluation != "no request" %}
-        <a
+        <p id="reassign-p" style="margin-top:0">
+        request id {{ metadata.image_request_id }} <a
             id="reassign-anchor"
-            onclick = "toggleVisibility(['assign-request-form', 'reassign-anchor'])">
-        reassign request id</a>
+            onclick = "toggleVisibility(['assign-record-form', 'reassign-p'])">
+        [reassign]
+        </a>
+        </p>
         {% endif %}
-        <form id="assign-request-form" style="display: none" action="assign_record">
-            {{ assign_request_form }}
+        <form id="assign-record-form"
+              {% if assign_record_form.errors %}
+              style="display: inherit"
+              {% else %}
+              style="display: none"
+              {% endif %}
+              action="assign_record" method="post">
+            {% if assign_record_form.errors %}
+            {{ assign_record_form.errors }}
+            {% endif %}
+            <div id="class-application-container" class="record-assign">
+            {{ assign_record_form }}
             <label for='hidden-record-id-input' style="display: none"></label>
-            <input
-                id='hidden-record-id-input'
-                name="record_id"
-                style="display: none"
-                value="{{ assign_request_form.image_record.id }}">
+            <div id="hidden-inputs" style="display: none">
+                <label>
+                    <input name="rec_id" value="{{ assign_record_form.rec_id }}">
+                </label>
+                <label><input name="pid" value="{{ pid }}"></label>
+            </div>
             <button type="submit">assign</button>
         </form>
+        </div>
         </div>
      </div>
     </div>
