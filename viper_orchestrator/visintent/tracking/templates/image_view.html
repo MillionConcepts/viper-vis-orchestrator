@@ -6,30 +6,19 @@
 <div id="layout-container" class="split-flow-container">
     <div
         id="product-container"
-        style="display:flex;
-        flex-direction:row;
-        margin-left:1vw;
-        margin-top:1vh;
-        flex-shrink:1;
-        max-width: 75%;
-        "
-    >
+        class="split-flow-panel-main"
+        style="margin-left:1vw; margin-top:1vh;">
         <div
             id="metadata-panel"
             class="flex-panel shrinking-text"
-            style="overflow:scroll"
-        >
+            style="overflow:scroll">
             <h3 class="metadata-header">{{ pid }}</h3>
             {% for field, value in metadata.items %}
                 <p class="metadata-row">{{ field }}: {{ value }}</p>
             {% endfor %}
         </div>
         <div id="image-panel" class="flex-panel">
-            <img
-                src="{{ browse_url }}"
-                alt="browse image for {{ pid }}"
-                style="max-width: 100%; height:auto;"
-            >
+            <img src="{{ browse_url }}" alt="browse image for {{ pid }}">
         </div>
     </div>
     {# TODO, maybe: messy, populate styles and maybe text with js #}
@@ -58,10 +47,19 @@
                         [assign]</a>
                 {% endif %}
             </p>
+        </div>
+        <div id="request-id-display">
+        {% if assign_record_form.req_id.errors %}
+        <p style="font-size: 16pt; color:red">{{ reqerr }}</p>
+        {% endif %}
         <div id="request-display-format" style="display:flex;flex-direction: row">
         {% if evaluation != "no request" %}
+        {% if reqerr %}
+        <p id="reassign-p" style="margin-top:0; display:none">
+        {% else %}
         <p id="reassign-p" style="margin-top:0">
-        request id {{ metadata.image_request_id }} <a
+        {% endif %}
+            request id {{ metadata.image_request_id }} <a
             id="reassign-anchor"
             onclick = "toggleVisibility(['assign-record-form', 'reassign-p'])">
         [reassign]
@@ -69,17 +67,15 @@
         </p>
         {% endif %}
         <form id="assign-record-form"
-              {% if assign_record_form.errors %}
+              {% if reqerr %}
               style="display: inherit"
               {% else %}
               style="display: none"
               {% endif %}
               action="assign_record" method="post">
-            {% if assign_record_form.errors %}
-            {{ assign_record_form.errors }}
-            {% endif %}
             <div id="class-application-container" class="record-assign">
-            {{ assign_record_form }}
+            {{ assign_record_form.req_id.label }}
+            {{ assign_record_form.req_id }}
             <label for='hidden-record-id-input' style="display: none"></label>
             <div id="hidden-inputs" style="display: none">
                 <label>

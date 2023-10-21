@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, object_session
 from viper_orchestrator.db.session import autosession
 from viper_orchestrator.db.table_utils import get_one
 from viper_orchestrator.utils import get_argnames
-from viper_orchestrator.typing import AppTable, JuncTable, JuncRule
+from viper_orchestrator.typing import AppRule, JuncRow, JuncRule
 
 
 class SAForm(forms.Form):
@@ -23,7 +23,7 @@ class SAForm(forms.Form):
         session: Session,
         force_remake: bool = False,
         constructor_method: Optional[str] = None
-    ) -> AppTable:
+    ) -> AppRule:
         """
         NOTE: autosession is not enabled for this function because an ad-hoc 
         Session will cause the function to return detached DeclarativeBase
@@ -87,9 +87,9 @@ class SAForm(forms.Form):
         session.add(self.get_row(session, force_remake, constructor_method))
         session.commit()
 
-    _row: AppTable = None
+    _row: AppRule = None
     pivot: str = "id"
-    table_class: type[AppTable]
+    table_class: type[AppRule]
     extra_attrs: tuple[str] = ()
 
 
@@ -112,10 +112,10 @@ class JunctionForm(SAForm):
     @autosession
     def get_relations(
         self,
-        table: type[JuncTable],
+        table: type[JuncRow],
         session: Optional[Session] = None,
         force_remake: bool = False
-    ) -> dict[str, list[JuncTable]]:
+    ) -> dict[str, list[JuncRow]]:
         if 'existing' in (ad := self._relations[table]).keys():
             juncs = set(ad.get('present', ())).union(ad.get('missing', ()))
             if (
@@ -199,6 +199,6 @@ class JunctionForm(SAForm):
             )
         )
 
-    _relations: dict[type[JuncTable, dict[str, list[JuncTable]]]]
-    junc_rules: Mapping[type[JuncTable], JuncRule]
-    junc_specs: dict[type[JuncTable], list[dict]]
+    _relations: dict[type[JuncRow, dict[str, list[JuncRow]]]]
+    junc_rules: Mapping[type[JuncRow], JuncRule]
+    junc_specs: dict[type[JuncRow], list[dict]]

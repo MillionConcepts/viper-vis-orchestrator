@@ -6,15 +6,17 @@ from typing import Optional
 from django import forms
 from django.core.exceptions import ValidationError
 from sqlalchemy import select
-from sqlalchemy.exc import InvalidRequestError
+from sqlalchemy.exc import InvalidRequestError, NoResultFound
 
 # noinspection PyUnresolvedReferences
 from viper_orchestrator.config import REQUEST_FILE_ROOT
 from viper_orchestrator.db import OSession
 from viper_orchestrator.db.session import autosession
 from viper_orchestrator.db.table_utils import get_one
-from viper_orchestrator.exceptions import AlreadyLosslessError, \
-    AlreadyDeletedError
+from viper_orchestrator.exceptions import (
+    AlreadyLosslessError,
+    AlreadyDeletedError,
+)
 from viper_orchestrator.visintent.tracking.sa_forms import JunctionForm
 from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
 from viper_orchestrator.visintent.visintent.settings import REQUEST_FILE_URL
@@ -57,6 +59,19 @@ class CarelessMultipleChoiceField(forms.MultipleChoiceField):
         pass
 
 
+# class RequestAssignmentField(forms.IntegerField):
+#
+#     def validate(self, _):
+#         return
+#
+#     def clean(self, value):
+#         value = self.to_python(value)
+#         try:
+#             get_one(ImageRecord, value)
+#
+#         self.validate(value)
+#
+
 class AssignRecordForm(forms.Form):
     """very simple form for associating an ImageRecord with an ImageRequest."""
 
@@ -64,39 +79,38 @@ class AssignRecordForm(forms.Form):
     def __init__(self, *args, rec_id=None, req_id=None, session=None):
         super().__init__(*args)
         if self.is_bound:
-            self.rec_id = int(args[0]['rec_id'])
+            self.rec_id = int(args[0]["rec_id"])
             return
         try:
             self.req_id, self.rec_id = int(req_id), int(rec_id)
-            # TODO: inefficient to do this lookup twice but I don't want to
-            #  keep the session alive forever or pretend it's ok at init
+            # wasteful to do this lookup twice, but best for strictness --
+            # never want to put an unbound version of this form on a page
             get_one(ImageRecord, self.rec_id, session=session)
         except ValueError:
             raise ValueError("ids must be integers")
-        except InvalidRequestError:
-            raise ValidationError(f"no ImageRecord with id {rec_id} exists")
-        self.fields['req_id'].initial = self.req_id
+        except NoResultFound:
+            raise ValueError(f"No image with record id {rec_id} exists.")
+        self.fields["req_id"].initial = self.req_id
 
     req_id = forms.IntegerField(
         label="request id",
-        widget=forms.TextInput(
-            attrs={"id": "request-id-entry", "value": ""}
-        )
+        widget=forms.TextInput(attrs={"id": "request-id-entry", "value": ""}),
     )
 
     @autosession
     def clean(self, session=None):
         super().clean()
-        try:
-            self.req_id = int(self.cleaned_data['req_id'])
-        except ValueError:
-            raise ValidationError("request id must be an integer")
-        # TODO, maybe: inefficient to do this lookup twice but i really want
-        #  to be able to automatically place the error on the form
+        if 'req_id' in self.errors:
+            # lazy way to override default phrase i don't like
+            self.errors['req_id'] = ["request id must be an integer."]
+            return
+        self.req_id = self.cleaned_data['req_id']
         try:
             get_one(ImageRequest, self.req_id, session=session)
         except InvalidRequestError:
-            raise ValidationError(f"ImageRequest {self.req_id} does not exist")
+            self.add_error(
+                "req_id", f"no ImageRequest with id {self.req_id} exists"
+            )
 
     @autosession
     def commit(self, session=None):
@@ -142,6 +156,7 @@ class VerificationForm(JunctionForm):
                     "Cannot find a unique image matching this product ID"
                 )
         self.image_record = image_record
+
     verified = forms.BooleanField(required=True)
     image_tags = forms.MultipleChoiceField(
         widget=forms.SelectMultiple(
@@ -159,7 +174,7 @@ class VerificationForm(JunctionForm):
     )
 
     @property
-    def association_rules(self):
+    def junc_rules(self):
         return {
             JuncImageRecordTag: {
                 "target": ImageTag,
@@ -229,8 +244,8 @@ class RequestForm(JunctionForm):
             for field_name, field in self.fields.items():
                 if field_name not in self.required_intent_fields:
                     field.required, field.disabled = False, True
-            self.fields['critical'].disabled = False
-            self.fields['luminaires'].initial = None
+            self.fields["critical"].disabled = False
+            self.fields["luminaires"].initial = None
 
     def filepaths(self):
         # TODO, maybe: is this pathing a little sketchy?
@@ -256,7 +271,7 @@ class RequestForm(JunctionForm):
         # identify existing request by request primary key
         info = wsgirequest.POST if submitted is True else wsgirequest.GET
         args = () if submitted is False else (info,)
-        if (rid := info.get('request_id')) is not None:
+        if (rid := info.get("request_id")) is not None:
             return cls.from_request_id(*args, rid=rid)
         # otherwise simply populate / create blank form
         return cls(*args)
@@ -471,9 +486,9 @@ class RequestForm(JunctionForm):
         self.fields["critical"].choices = [(h, h) for h in ldst_hypotheses]
         self.fields["critical"].initial = critical
 
-    def _construct_associations(self):
+    def _construct_relations(self):
         """construct JuncImageRequestLDST attrs from form content"""
-        if 'ldst_hypotheses' not in self.cleaned_data:
+        if "ldst_hypotheses" not in self.cleaned_data:
             return
         with OSession() as session:
             for hyp in self.cleaned_data["ldst_hypotheses"]:
@@ -483,7 +498,7 @@ class RequestForm(JunctionForm):
                         select(LDST).where(LDST.id == hyp)
                     ).one(),
                 }
-                self.associated[JuncImageRequestLDST].append(attrs)
+                self._relations[JuncImageRequestLDST].append(attrs)
 
     @staticmethod
     def _image_request_to_camera_request(request: ImageRequest):
@@ -516,7 +531,7 @@ class RequestForm(JunctionForm):
         UI.
         """
         # note that only aftcams/navcams have imaging_mode
-        if self.fields['camera_request'].disabled is True:
+        if self.fields["camera_request"].disabled is True:
             return
         request = self.cleaned_data["camera_request"]
         ct, mode = request.split("_", maxsplit=1)
@@ -536,7 +551,7 @@ class RequestForm(JunctionForm):
 
     def clean(self):
         super().clean()
-        self._construct_associations()
+        self._construct_relations()
         self._reformat_camera_request()
         if len(self.cleaned_data.get("luminaires", [])) > 2:
             raise ValidationError("A max of two luminaires may be requested")

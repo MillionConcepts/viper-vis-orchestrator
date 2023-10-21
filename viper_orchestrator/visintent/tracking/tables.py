@@ -2,6 +2,7 @@
 like a conventional django models module, but using the SQLAlchemy ORM rather 
 than the django ORM for compatibility with vipersci.
 """
+from __future__ import annotations
 
 from sqlalchemy import (
     DateTime,

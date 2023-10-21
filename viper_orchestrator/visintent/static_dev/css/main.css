@@ -119,8 +119,13 @@ aside {
 .metadata-header {
     margin-top:0;
 }
+.review-container {
+    margin-bottom: 2rem;
+}
 .review-container p {
     font-size: inherit;
+    margin-bottom: 0.1rem;
+    margin-top: 0.1rem;
 }
 .metadata-row {
     margin:0.1rem;
@@ -147,12 +152,10 @@ aside {
     display: flex;
     flex-direction: row;
 }
-
 .feed-panel {
     background-color: var(--astronomical-twilight);
     padding: 0.5rem;
 }
-
 .flex-panel {
     flex-shrink: 1;
     flex-grow: 0.7;
@@ -160,7 +163,9 @@ aside {
     max-width: 55%;
     margin: 1.5rem;
 }
-
+.flex-panel img {
+    max-width: 100%; height:auto
+}
 .shrinking-text {
     max-height: 50rem;
     overflow: scroll;
@@ -191,13 +196,21 @@ aside {
 .image-table td {
     font-size: 18pt;
 }
-
+.split-flow-panel-main {
+    display: flex;
+    flex-direction: row;
+    flex-shrink: 1;
+    max-width: 100%
+}
 @media (max-width: 90rem) {
     .split-flow-container, .pl-table-container {
         flex-direction: column;
     }
     .shrinking-text {
         max-height: 25rem;
+    }
+    .split-flex-panel-main {
+        max-width:75%
     }
 }
 
@@ -228,7 +241,7 @@ aside {
     margin-right: 0.25rem;
 }
 .record-assign input {
-    max-width: 1rem;
+    max-width: 2.7rem;
     color: var(--silver);
     background-color: var(--night-black);
     font-size: 16pt;

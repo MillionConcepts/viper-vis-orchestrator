@@ -1,6 +1,7 @@
 """orchestrator configuration."""
-import sys
+from __future__ import annotations
 from pathlib import Path
+import sys
 
 from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
 from vipersci.vis.db.image_records import ImageRecord

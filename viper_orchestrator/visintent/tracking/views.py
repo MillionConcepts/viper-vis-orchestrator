@@ -77,6 +77,10 @@ def imageview(
         metadata["image_request_id"] = req_id
     if assign_record_form is None:
         assign_record_form = AssignRecordForm(rec_id=record.id, req_id=req_id)
+    if (reqerr := assign_record_form.errors.get('req_id')) is not None:
+        reqerr = reqerr[0]
+    else:
+        reqerr = None
     return render(
         request,
         "image_view.html",
@@ -93,6 +97,7 @@ def imageview(
             "pagetitle": record._pid,
             "request_url": request_url,
             "verification_form": VerificationForm(image_record=record),
+            "reqerr": reqerr
         },
     )
 

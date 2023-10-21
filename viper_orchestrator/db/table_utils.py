@@ -1,14 +1,18 @@
 """abstractions for ORM object queries and introspection."""
-from typing import Collection, Union, Any, Optional
+from __future__ import annotations
+from typing import Collection, Union, Any, Optional, TYPE_CHECKING
 
 from sqlalchemy import select, inspect
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import Session
-from sqlalchemy.orm._typing import _O
 
 from viper_orchestrator.db import OSession
 from viper_orchestrator.db.session import autosession
 from vipersci.vis.db.image_records import ImageRecord, ImageType
 from vipersci.vis.db.image_requests import ImageRequest
+
+if TYPE_CHECKING:
+    from viper_orchestrator.typing import MappedRow
 
 
 def intsplit(comma_separated_numbers: str) -> set[int]:
@@ -20,7 +24,8 @@ def collstring(coll: Collection) -> str:
     return ",".join(map(str, coll))
 
 
-def pk(obj: Union[type[_O], _O]) -> str:
+def pk(obj: Union[type[MappedRow], MappedRow]) -> str:
+    """get the name of a SQLAlchemy table's first primary key"""
     return inspect(obj).primary_key[0].name
 
 
@@ -100,12 +105,12 @@ def records_from_capture_ids(
 
 @autosession
 def get_one(
-    table: type[_O],
+    table: type[MappedRow],
     value: Any,
     pivot: Optional[str] = None,
     session: Optional[Session] = None,
     strict: bool = False
-) -> _O:
+) -> MappedRow:
     """
     get a single row from a table based on strict equality between the
     `value` argument and the value of the field named `pivot` in the `table`.
@@ -117,7 +122,10 @@ def get_one(
     Will always throw a NoResultFound exception if no row is found.
     """
     if pivot is None:
-        return session.get(table, value)
+        row = session.get(table, value)
+        if row is not None:
+            return row
+        raise NoResultFound
     # noinspection PyTypeChecker
     scalars = session.scalars(
         select(table).where(getattr(table, pivot) == value)
