@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, object_session
 from viper_orchestrator.db.session import autosession
 from viper_orchestrator.db.table_utils import get_one
 from viper_orchestrator.utils import get_argnames
-from viper_orchestrator._typing import AppTable, JuncTable, AssociationRule
+from viper_orchestrator.typing import AppTable, JuncTable, JuncRule
 
 
 class SAForm(forms.Form):
@@ -102,24 +102,28 @@ class JunctionForm(SAForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._associations = {k: {} for k in self.association_rules.keys()}
-        self.assocation_specs = {k: [] for k in self.association_rules.keys()}
+        # retrieved-from-database or ready-to-be-committed related objects,
+        # organized by table and status
+        self._relations = {k: {} for k in self.junc_rules.keys()}
+        # lists of kwargs to be used for constructing or modifying related
+        # objects
+        self.junc_specs = {k: [] for k in self.junc_rules.keys()}
 
     @autosession
-    def get_associations(
+    def get_relations(
         self,
         table: type[JuncTable],
         session: Optional[Session] = None,
         force_remake: bool = False
     ) -> dict[str, list[JuncTable]]:
-        if 'existing' in (ad := self._associations[table]).keys():
+        if 'existing' in (ad := self._relations[table]).keys():
             juncs = set(ad.get('present', ())).union(ad.get('missing', ()))
             if (
                 all(object_session(j) is session for j in juncs)
                 and force_remake is False
             ):
-                return self._associations[table]
-        rules = self.association_rules[table]
+                return self._relations[table]
+        rules = self.junc_rules[table]
         junc_reference, referent = rules["pivot"]
         # noinspection PyTypeChecker
         exist_selector = select(table).where(
@@ -128,7 +132,7 @@ class JunctionForm(SAForm):
         adict = defaultdict(list)
         # noinspection PyTypeChecker
         adict['existing'] = session.scalars(exist_selector).all()
-        specs = {i: s for i, s in enumerate(self.assocation_specs[table])}
+        specs = {i: s for i, s in enumerate(self.junc_specs[table])}
         for junc_row in adict['existing']:
             matches = [
                 (i, s) for i, s in specs.items()
@@ -158,8 +162,8 @@ class JunctionForm(SAForm):
                 for attr, val in s.items():
                     setattr(junc_row, attr, val)
                 setattr(junc_row, rules["self_attr"], row)
-        self._associations[table] = dict(adict)
-        return self._associations[table]
+        self._relations[table] = dict(adict)
+        return self._relations[table]
 
     @autosession
     def commit(
@@ -169,10 +173,10 @@ class JunctionForm(SAForm):
         constructor_method: Optional[str] = None
     ):
         removed = []
-        for table in self.association_rules.keys():
-            associations = self.get_associations(table, session, force_remake)
-            session.add_all(associations['existing'])
-            removed += associations['missing']
+        for table in self.junc_rules.keys():
+            related = self.get_relations(table, session, force_remake)
+            session.add_all(related['existing'])
+            removed += related['missing']
         row = self.get_row(session, force_remake, constructor_method)
         session.add(row)
         for r in removed:
@@ -181,8 +185,8 @@ class JunctionForm(SAForm):
 
     @autosession
     def _populate_junc_fields(self, session: Optional[Session] = None):
-        for table, rules in self.association_rules.items():
-            existing = self.get_associations(table, session)
+        for table, rules in self.junc_rules.items():
+            existing = self.get_relations(table, session)
             if len(existing) != 0:
                 rules["populator"](existing)
 
@@ -191,10 +195,10 @@ class JunctionForm(SAForm):
         return set(
             filter(
                 None,
-                (r.get("form_field") for r in self.association_rules.values()),
+                (r.get("form_field") for r in self.junc_rules.values()),
             )
         )
 
-    _associations: dict[type[JuncTable, dict[str, list[JuncTable]]]]
-    association_rules: Mapping[type[JuncTable], AssociationRule]
-    assocation_specs: dict[type[JuncTable], list[dict]]
+    _relations: dict[type[JuncTable, dict[str, list[JuncTable]]]]
+    junc_rules: Mapping[type[JuncTable], JuncRule]
+    junc_specs: dict[type[JuncTable], list[dict]]

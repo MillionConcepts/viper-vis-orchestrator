@@ -186,7 +186,7 @@ class VerificationForm(JunctionForm):
                     select(ImageTag).where(ImageTag.name == tag)
                 )
             }
-            self.assocation_specs[JuncImageRecordTag].append(attrs)
+            self.junc_specs[JuncImageRecordTag].append(attrs)
 
     def clean(self):
         super().clean()

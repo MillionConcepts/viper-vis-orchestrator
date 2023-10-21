@@ -6,18 +6,20 @@ or other workarounds.
 """
 from typing import Union, Mapping, Callable
 
+from django.http import HttpResponse, HttpResponseRedirect
+
 from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest
 from vipersci.vis.db.junc_image_record_tags import JuncImageRecordTag
 from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
 
-from django.http import HttpResponse, HttpResponseRedirect
-
 
 DjangoResponseType = Union[HttpResponse, HttpResponseRedirect]
+"""valid, in-use return types for django view functions"""
 AppTable = Union[ImageRequest, ImageRecord, ProtectedListEntry]
+"""non-junc tables orchestrator/visintent we interact with at runtime"""
 JuncTable = Union[JuncImageRecordTag, JuncImageRequestLDST]
-AssociationRule = Mapping[
-    str, Union[str, JuncTable, tuple[str], Callable[[], None]]
-]
+"""junc (many-to-many relation manager) tables we interact with at runtime"""
+JuncRule = Mapping[str, Union[str, JuncTable, tuple[str], Callable[[], None]]]
+"""rules used to define the behavior of forms that manage relations"""
