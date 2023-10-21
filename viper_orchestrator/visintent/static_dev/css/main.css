@@ -52,6 +52,23 @@ body {
     font-weight: 400
 }
 
+input, select, textarea {
+    background: var(--silver);
+}
+
+select, textarea {
+    font-size: 15px;
+    font-family: "Fira Mono", monospace;
+}
+
+
+select option:checked {
+    box-shadow: 0 0 1rem 1rem var(--royal-violet) inset;
+    color: white;
+}
+select::-moz-selection {
+    var(--royal-violet);
+}
 h1, h2, h3, h4, .metadata-title {
     font-family: 'Titillium Web', sans-serif;
 }
@@ -107,7 +124,6 @@ aside {
 .horizontal-plain-links {
     display: flex;
     flex-direction: row;
-
 }
 .horizontal-plain-links p, a {
     font-size:inherit;
@@ -118,6 +134,64 @@ aside {
 }
 .metadata-header {
     margin-top:0;
+}
+.vertical-form-container, .vertical-form-field, .pl-table-container,
+.review-container {
+    display: flex;
+    flex-direction: column;
+}
+.vertical-form-container {
+    margin-top: 1rem;
+}
+.vertical-form-container .checkbox-field, .number-field {
+    width: fit-content;
+    flex-direction: row;
+}
+.vertical-form-container .checkbox-field, .number-field label {
+    margin-bottom: 0.25rem;
+    margin-top: 0.25rem;
+    margin-right: 0.5rem;
+    padding: 0;
+}
+.vertical-form-container .number-field input {
+    max-width: 2.8rem;
+    max-height: 0.9rem;
+    margin-top: 0.4rem
+    /*vertical-align: center;*/
+}
+.verification-form-container {
+    flex-direction: column;
+    max-width: 25vw;
+}
+.verification-form-container .vertical-form-field textarea,
+.verification-form-container .vertical-form-field select{
+    margin-bottom: 1rem;
+}
+.verification-form-container .vertical-form-field label {
+    font-size:20px;
+    margin-bottom:0.3rem;
+}
+.verification-form-container .good-bad-field label {
+    font-size: 30px;
+    margin-right:0.25rem;
+}
+.verification-form-container .good-bad-field #id_good {
+    height: 1.7rem;
+    width: 1.7rem;
+    accent-color: var(--phosphor-green)
+}
+.verification-form-container .good-bad-field #id_bad {
+    height: 1.7rem;
+    width: 1.7rem;
+    accent-color: var(--old-led)
+}
+.verification-form-container .checkbox-field input:checked {
+    box-shadow: 0 0 1rem 1rem var(--royal-violet) inset;
+    color: white;
+}
+.pl-table-item {
+    padding-right: 1rem;
+    max-width: 20rem;
 }
 .review-container {
     margin-bottom: 2rem;
@@ -130,24 +204,11 @@ aside {
 .metadata-row {
     margin:0.1rem;
 }
-
 .placeholder-text {
     color: var(--old-led);
     font-size: 11pt;
     margin: 0;
 }
-
-.pl-table-item {
-    padding-right: 1rem;
-    max-width: 20rem;
-}
-
-.pl-table-container {
-    display: flex;
-    /*max-width: 60vw;*/
-    /*flex*/
-}
-
 .split-flow-container {
     display: flex;
     flex-direction: row;
@@ -164,7 +225,8 @@ aside {
     margin: 1.5rem;
 }
 .flex-panel img {
-    max-width: 100%; height:auto
+    max-width: 100%;
+    height:auto
 }
 .shrinking-text {
     max-height: 50rem;
@@ -212,8 +274,20 @@ aside {
     .split-flex-panel-main {
         max-width:75%
     }
+    .verification-form-container {
+        max-width: 80vw;
+        flex-direction: row;
+        flex-shrink: 0;
+        flex-grow: 1;
+    }
+    .verification-form-container .vertical-form-field,
+    .verification-form-container .good-bad-field {
+        margin-right: 2rem;
+        flex-grow: 1;
+        flex-shrink: 0;
+        max-width: 45%
+    }
 }
-
 .metadata-view-title {
     font-size: 19pt;
     font-weight: 400;

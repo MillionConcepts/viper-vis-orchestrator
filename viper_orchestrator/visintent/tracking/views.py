@@ -94,6 +94,7 @@ def imageview(
             "label_url": DATA_ROOT / label_path_stub,
             "metadata": metadata,
             "pid": record._pid,
+            "rec_id": record.id,
             "pagetitle": record._pid,
             "request_url": request_url,
             "verification_form": VerificationForm(image_record=record),

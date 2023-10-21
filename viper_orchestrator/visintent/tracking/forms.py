@@ -82,7 +82,11 @@ class AssignRecordForm(forms.Form):
             self.rec_id = int(args[0]["rec_id"])
             return
         try:
-            self.req_id, self.rec_id = int(req_id), int(rec_id)
+            self.rec_id = int(rec_id)
+            if req_id not in (None, ""):
+                self.req_id = int(req_id)
+            else:
+                self.req_id = None
             # wasteful to do this lookup twice, but best for strictness --
             # never want to put an unbound version of this form on a page
             get_one(ImageRecord, self.rec_id, session=session)
@@ -157,7 +161,8 @@ class VerificationForm(JunctionForm):
                 )
         self.image_record = image_record
 
-    verified = forms.BooleanField(required=True)
+    good = forms.BooleanField()
+    bad = forms.BooleanField()
     image_tags = forms.MultipleChoiceField(
         widget=forms.SelectMultiple(
             attrs={"id": "image-tags", "value": "", "placeholder": ""}
@@ -205,6 +210,10 @@ class VerificationForm(JunctionForm):
 
     def clean(self):
         super().clean()
+        if "bad" not in self.cleaned_data and "good" not in self.cleaned_data:
+            raise ValidationError("must select good or bad")
+        if self.cleaned_data["bad"] == self.cleaned_data["good"]:
+            raise ValidationError("cannot be both bad and good")
         self._construct_image_tag_attrs()
 
 
@@ -464,7 +473,7 @@ class RequestForm(JunctionForm):
         return self._css_class_fields("slice-field")
 
     @cached_property
-    def association_rules(self):
+    def junc_rules(self):
         return {
             JuncImageRequestLDST: {
                 "target": LDST,

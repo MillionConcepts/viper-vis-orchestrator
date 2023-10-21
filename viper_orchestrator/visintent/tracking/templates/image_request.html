@@ -3,8 +3,7 @@
 <body>
 {% include "layouts/nav.html" %}
 <form method="POST" action="/submitrequest"
-  enctype="multipart/form-data" style="max-width: 50vw"
->
+  enctype="multipart/form-data" style="max-width: 50vw">
     {% if form.id is not None %}
         <h2>editing image request {{ form.id }}</h2>
 {#        <p class="placeholder-text">placeholder: a way to delete me</p>#}
@@ -22,7 +21,7 @@
     {% if form.errors %}
         {{ form.errors }}
     {% endif %}
-    <div style="margin-top: 1rem; display: flex; flex-direction: column;">
+    <div class="vertical-form-container">
         {% if form.id is None %}
             <div id="status-hider" style="display: none">
         {% endif %}
@@ -32,6 +31,8 @@
             </div>
         {% endif %}
         {% for field in form %}
+        <div id="{{ field.name }}-field-div"
+             class="{{ field.widget_type }}-field vertical-form-field">
         {% if field.name != 'status' %}
             <label
                 {% if field.name in form.slice_fields %}class="pano-only slice-field"
@@ -45,6 +46,7 @@
             </label>
             {{field}}
         {% endif %}
+        </div>
         {% endfor %}
     </div>
     <div style="margin-top: 1rem;">
