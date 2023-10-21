@@ -1,22 +1,14 @@
 """abstractions for ORM object queries and introspection."""
-from typing import Collection, Union
+from typing import Collection, Union, Any, Optional
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session, DeclarativeBase
+from sqlalchemy import select, inspect
+from sqlalchemy.orm import Session
+from sqlalchemy.orm._typing import _O
 
 from viper_orchestrator.db import OSession
+from viper_orchestrator.db.session import autosession
 from vipersci.vis.db.image_records import ImageRecord, ImageType
 from vipersci.vis.db.image_requests import ImageRequest
-
-
-def sa_attached(row: DeclarativeBase):
-    """is this object attached to a SQLAlchemy Session?"""
-    return row.__getstate__()['_sa_instance_state'].session is not None
-
-
-def sa_attached_to(row: DeclarativeBase, session: Session):
-    """is this object attached to this particular SQLAlchemy Session?"""
-    return row.__getstate__()['_sa_instance_state'].session is session
 
 
 def intsplit(comma_separated_numbers: str) -> set[int]:
@@ -26,6 +18,10 @@ def intsplit(comma_separated_numbers: str) -> set[int]:
 
 def collstring(coll: Collection) -> str:
     return ",".join(map(str, coll))
+
+
+def pk(obj: Union[type[_O], _O]) -> str:
+    return inspect(obj).primary_key[0].name
 
 
 def get_record_attrs(
@@ -100,3 +96,30 @@ def records_from_capture_ids(
         selector = select(ImageRecord).where(cid == ImageRecord.capture_id)
         records += session.scalars(selector).all()
     return records
+
+
+@autosession
+def get_one(
+    table: type[_O],
+    value: Any,
+    pivot: Optional[str] = None,
+    session: Optional[Session] = None,
+    strict: bool = False
+) -> _O:
+    """
+    get a single row from a table based on strict equality between the
+    `value` argument and the value of the field named `pivot` in the `table`.
+    If `pivot` is None, this field to the first primary key of `table` (
+        this operation is also more efficient with an already-open Session, as
+        it can use the Session's pk cache.)
+    If strict is True, will throw an error if more than one row matches the
+        criterion; otherwise returns the top matching row.
+    Will always throw a NoResultFound exception if no row is found.
+    """
+    if pivot is None:
+        return session.get(table, value)
+    # noinspection PyTypeChecker
+    scalars = session.scalars(
+        select(table).where(getattr(table, pivot) == value)
+    )
+    return getattr(scalars, "first" if strict is False else "one")()

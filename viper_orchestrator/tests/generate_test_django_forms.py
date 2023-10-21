@@ -28,8 +28,8 @@ django.setup()
 from viper_orchestrator.visintent.tracking.forms import (
     RequestForm,
     PLSubmission,
-    AlreadyLosslessError,
 )
+from viper_orchestrator.exceptions import AlreadyLosslessError
 from viper_orchestrator.visintent.tracking.views import (
     assign_records_from_capture_ids,
 )

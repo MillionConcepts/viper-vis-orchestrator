@@ -1,29 +1,18 @@
 """base classes to help glue Django forms to SQLAlchemy."""
 from collections import defaultdict
 from functools import cached_property
-from typing import Union, Mapping, Callable, Optional
+from typing import Mapping, Optional
 
 from cytoolz import keyfilter
 from django import forms
 from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound, InvalidRequestError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
-from func import get_argnames
 from viper_orchestrator.db.session import autosession
-from viper_orchestrator.db.table_utils import sa_attached_to
-
-from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
-from vipersci.vis.db.image_records import ImageRecord
-from vipersci.vis.db.image_requests import ImageRequest
-from vipersci.vis.db.junc_image_record_tags import JuncImageRecordTag
-from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
-
-AppTable = Union[ImageRequest, ImageRecord, ProtectedListEntry]
-JuncTable = Union[JuncImageRecordTag, JuncImageRequestLDST]
-AssociationRule = Mapping[
-    str, Union[str, JuncTable, tuple[str], Callable[[], None]]
-]
+from viper_orchestrator.db.table_utils import get_one
+from viper_orchestrator.utils import get_argnames
+from viper_orchestrator._typing import AppTable, JuncTable, AssociationRule
 
 
 class SAForm(forms.Form):
@@ -31,13 +20,20 @@ class SAForm(forms.Form):
 
     def get_row(
         self,
-        session: Optional[Session] = None,
+        session: Session,
         force_remake: bool = False,
         constructor_method: Optional[str] = None
     ) -> AppTable:
+        """
+        NOTE: autosession is not enabled for this function because an ad-hoc 
+        Session will cause the function to return detached DeclarativeBase
+        instances, which will cause hard-to-diagnose bugs in many anticipated
+        workflows that incorporate this function (in particular, those that 
+        will touch any relations to other tables.)
+        """
         if (
             (self._row is not None)
-            and sa_attached_to(self._row, session)
+            and object_session(self._row) is session
             and (force_remake is False)
         ):
             return self._row
@@ -60,10 +56,7 @@ class SAForm(forms.Form):
                 f"member of self.base_fields"
             )
         try:
-            selector = select(self.table_class).where(
-                getattr(self.table_class, self.pivot) == ref
-            )
-            row = session.scalars(selector).one()
+            row = get_one(self.table_class, ref, self.pivot, session=session)
             for k, v in data.items():
                 setattr(row, k, v)
             self._row = row
@@ -82,8 +75,15 @@ class SAForm(forms.Form):
 
     @autosession
     def commit(
-        self, session=None, force_remake=False, constructor_method=None
+        self,
+        session: Optional[Session] = None,
+        force_remake: bool = False,
+        constructor_method: Optional[str] = None
     ):
+        """
+        constructor_method: if present, should be the name of a constructor
+            method of self.table_class; defaults to self.table_class.__init__
+        """
         session.add(self.get_row(session, force_remake, constructor_method))
         session.commit()
 
@@ -111,11 +111,11 @@ class JunctionForm(SAForm):
         table: type[JuncTable],
         session: Optional[Session] = None,
         force_remake: bool = False
-    ) -> dict[str, JuncTable]:
+    ) -> dict[str, list[JuncTable]]:
         if 'existing' in (ad := self._associations[table]).keys():
             juncs = set(ad.get('present', ())).union(ad.get('missing', ()))
             if (
-                all(sa_attached_to(j, session) for j in juncs)
+                all(object_session(j) is session for j in juncs)
                 and force_remake is False
             ):
                 return self._associations[table]
@@ -163,7 +163,10 @@ class JunctionForm(SAForm):
 
     @autosession
     def commit(
-        self, session=None, force_remake=False, constructor_method=None
+        self,
+        session: Optional[Session] = None,
+        force_remake: bool = False,
+        constructor_method: Optional[str] = None
     ):
         removed = []
         for table in self.association_rules.keys():

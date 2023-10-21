@@ -1,13 +1,11 @@
 """django view functions and helpers."""
-import datetime as dt
 import json
 import shutil
 from collections import defaultdict
-from typing import Union
 
 from cytoolz import groupby
 from django.core.handlers.wsgi import WSGIRequest
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import HttpResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
 from sqlalchemy import select
@@ -15,19 +13,23 @@ from sqlalchemy.exc import InvalidRequestError
 
 # noinspection PyUnresolvedReferences
 from viper_orchestrator.config import DATA_ROOT, PRODUCT_ROOT
+from viper_orchestrator.typing import DjangoResponseType
 from viper_orchestrator.db import OSession
-from viper_orchestrator.db.session import autosession, get_one
+from viper_orchestrator.db.session import autosession
 from viper_orchestrator.db.table_utils import (
     image_request_capturesets,
+    get_one,
+)
+from viper_orchestrator.exceptions import (
+    AlreadyDeletedError,
+    AlreadyLosslessError,
+    BadURLError,
 )
 from viper_orchestrator.visintent.tracking.forms import (
-    RequestForm,
-    PLSubmission,
-    BadURLError,
-    AlreadyLosslessError,
-    AlreadyDeletedError,
-    VerificationForm, 
     AssignRecordForm,
+    PLSubmission,
+    RequestForm,
+    VerificationForm,
 )
 from viper_orchestrator.visintent.tracking.forms import (
     request_supplementary_path,
@@ -43,8 +45,6 @@ from viper_orchestrator.visintent.visintent.settings import (
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest, Status
 
-ResponseType = Union[HttpResponse, HttpResponseRedirect]
-
 
 @never_cache
 @autosession
@@ -53,15 +53,16 @@ def imageview(
     session=None,
     assign_record_form=None,
     pid=None,
-    **_regex_kwargs
+    **_regex_kwargs,
 ) -> HttpResponse:
     if pid is None:
-        pid = request.path.strip('/')
+        pid = request.path.strip("/")
     try:
         record = get_one(ImageRecord, pid, "_pid", session=session)
     except InvalidRequestError:
         return HttpResponse(
-            f"No image in the database has product id {pid}.", status=404,
+            f"No image in the database has product id {pid}.",
+            status=404,
         )
     label_path_stub = record.file_path.replace(".tif", ".json")
     with (DATA_ROOT / label_path_stub).open() as stream:
@@ -73,7 +74,7 @@ def imageview(
         request_url, req_id = None, record.image_request.id
         evaluation = "not"
         # this will usually be None in the on-disk labels
-        metadata['image_request_id'] = req_id
+        metadata["image_request_id"] = req_id
     if assign_record_form is None:
         assign_record_form = AssignRecordForm(rec_id=record.id, req_id=req_id)
     return render(
@@ -82,8 +83,7 @@ def imageview(
         {
             "assign_record_form": assign_record_form,
             "browse_url": (
-                BROWSE_URL
-                + record.file_path.replace(".tif", "_browse.jpg")
+                BROWSE_URL + record.file_path.replace(".tif", "_browse.jpg")
             ),
             "evaluation": evaluation,
             "image_url": record.file_path,
@@ -97,20 +97,19 @@ def imageview(
     )
 
 
-
 @never_cache
 @autosession
-def assign_record(request: WSGIRequest, session=None) -> ResponseType:
+def assign_record(request: WSGIRequest, session=None) -> DjangoResponseType:
     """associate an ImageRecord with an ImageRequest"""
     from viper_orchestrator.visintent.tracking.forms import AssignRecordForm
+
     form = AssignRecordForm(request.POST)
     if not form.is_valid():
         return imageview(
-            request, pid=request.POST['pid'], assign_record_form=form
+            request, pid=request.POST["pid"], assign_record_form=form
         )
-    form.commit()
-    return imageview(request, pid=request.POST['pid'])
-
+    form.commit(session=session)
+    return imageview(request, pid=request.POST["pid"])
 
 
 @never_cache
@@ -146,7 +145,7 @@ def imagerequest(request: WSGIRequest) -> HttpResponse:
 
 
 @never_cache
-def submitrequest(request: WSGIRequest) -> ResponseType:
+def submitrequest(request: WSGIRequest) -> DjangoResponseType:
     """
     handle request submission and redirect to errors or success notification
     as appropriate

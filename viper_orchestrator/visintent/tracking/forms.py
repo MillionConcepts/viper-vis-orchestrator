@@ -11,7 +11,10 @@ from sqlalchemy.exc import InvalidRequestError
 # noinspection PyUnresolvedReferences
 from viper_orchestrator.config import REQUEST_FILE_ROOT
 from viper_orchestrator.db import OSession
-from viper_orchestrator.db.session import autosession, get_one
+from viper_orchestrator.db.session import autosession
+from viper_orchestrator.db.table_utils import get_one
+from viper_orchestrator.exceptions import AlreadyLosslessError, \
+    AlreadyDeletedError
 from viper_orchestrator.visintent.tracking.sa_forms import JunctionForm
 from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
 from viper_orchestrator.visintent.visintent.settings import REQUEST_FILE_URL
@@ -37,10 +40,6 @@ def initialize_fields():
 FIELDS = initialize_fields()
 LDST_IDS = FIELDS["ldst_ids"]
 TAG_NAMES = FIELDS["tags"]
-
-
-class BadURLError(ValueError):
-    pass
 
 
 class CarelessMultipleChoiceField(forms.MultipleChoiceField):
@@ -574,14 +573,6 @@ class RequestForm(JunctionForm):
     camera_type = None
     hazcams = None
     generalities = None
-
-
-class AlreadyLosslessError(ValidationError):
-    pass
-
-
-class AlreadyDeletedError(ValidationError):
-    pass
 
 
 class PLSubmission(JunctionForm):
