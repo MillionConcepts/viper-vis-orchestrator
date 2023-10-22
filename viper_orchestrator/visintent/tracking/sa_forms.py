@@ -47,26 +47,26 @@ class SAForm(forms.Form):
             else:
                 raise NotImplementedError
         except (NotImplementedError, AttributeError):
-            raise TypeError("self.pivot not well-defined")
+            raise TypeError("self.pk_field not well-defined")
         except TypeError:
-            raise TypeError("mangled pivot definition")
+            raise TypeError("mangled pk_field definition")
         except KeyError:
             raise ValueError(
                 f"defined pk attribute {self.pk_field} not an attribute of "
                 f"self or a member of self.base_fields"
             )
+        valid = set(dir(self.table_class))
         try:
             row = get_one(
                 self.table_class,
                 getattr(self, self.pk_field),
                 session=session
             )
-            for k, v in data.items():
+            for k, v in keyfilter(lambda attr: attr in valid, data).items():
                 setattr(row, k, v)
             self._row = row
         except NoResultFound:
             data[self.pk_field] = ref
-            valid = set(dir(self.table_class))
             if constructor_method is None:
                 constructor = self.table_class
             else:

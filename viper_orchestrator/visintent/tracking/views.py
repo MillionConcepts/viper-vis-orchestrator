@@ -10,12 +10,11 @@ from django.http import HttpResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
 from sqlalchemy import select
-from sqlalchemy.exc import InvalidRequestError, NoResultFound
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import Session
 
 # noinspection PyUnresolvedReferences
 from viper_orchestrator.config import DATA_ROOT, PRODUCT_ROOT
-from viper_orchestrator.typing import DjangoResponseType
 from viper_orchestrator.db import OSession
 from viper_orchestrator.db.session import autosession
 from viper_orchestrator.db.table_utils import (
@@ -27,6 +26,7 @@ from viper_orchestrator.exceptions import (
     AlreadyLosslessError,
     BadURLError,
 )
+from viper_orchestrator.typing import DjangoResponseType
 from viper_orchestrator.visintent.tracking.forms import (
     AssignRecordForm,
     PLSubmission,
@@ -60,8 +60,9 @@ def imageview(
     **_regex_kwargs,
 ) -> HttpResponse:
     try:
+        record: ImageRecord
         if rec_id is not None:
-            record = get_one(ImageRecord, int(rec_id))
+            record = get_one(ImageRecord, int(rec_id), session=session)
         else:
             if pid is None:
                 pid = request.path.strip("/")
@@ -80,8 +81,11 @@ def imageview(
         # TODO: add logic
         request_url, req_id = None, record.image_request.id
         evaluation = "not"
-        # this will usually be None in the on-disk labels
+        # these will usually be None in the on-disk labels
         metadata["image_request_id"] = req_id
+        metadata["verified"] = record.verified
+        metadata['verification_notes'] = record.verification_notes
+        metadata['id'] = record.id
     if assign_record_form is None:
         assign_record_form = AssignRecordForm(rec_id=record.id, req_id=req_id)
     if (reqerr := assign_record_form.errors.get('req_id')) is not None:

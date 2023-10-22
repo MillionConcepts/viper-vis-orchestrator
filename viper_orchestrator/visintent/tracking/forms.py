@@ -169,6 +169,14 @@ class VerificationForm(JunctionForm):
             )
         self.image_record = image_record
         self.rec_id = self.image_record.id
+        self.verified = self.image_record.verified
+        if self.verified is not None:
+            self.fields['bad'].initial = not self.verified
+            self.fields['good'].initial = self.verified
+        self.fields['verification_notes'].initial = (
+            self.image_record.verification_notes
+        )
+        self._populate_junc_fields()
 
     good = forms.BooleanField(required=False)
     bad = forms.BooleanField(required=False)
@@ -189,6 +197,7 @@ class VerificationForm(JunctionForm):
         required=False
     )
     table_class = ImageRecord
+    pk_field = "rec_id"
 
     @property
     def junc_rules(self):
@@ -199,14 +208,15 @@ class VerificationForm(JunctionForm):
                 "pivot": ("image_record_id", "rec_id"),
                 "junc_pivot": "image_tag",
                 "self_attr": "image_record",
-                "form_field": "image_tag",
+                "form_field": "image_tags",
             }
         }
+    extra_attrs = ('verified',)
 
     def _populate_from_junc_image_record_tag(self, junc_rows):
         tag_names = []
         for row in junc_rows:
-            tag_names.append(row.name)
+            tag_names.append(row.image_tag.name)
         self.fields["image_tags"].initial = tag_names
 
     @autosession
@@ -226,7 +236,11 @@ class VerificationForm(JunctionForm):
             raise ValidationError("must select good or bad")
         if self.cleaned_data["bad"] == self.cleaned_data["good"]:
             raise ValidationError("cannot be both bad and good")
+        self.verified = self.cleaned_data['good']
         self._construct_image_tag_attrs()
+        del self.cleaned_data['image_tags']
+
+    verified: bool
 
 
 class RequestForm(JunctionForm):
