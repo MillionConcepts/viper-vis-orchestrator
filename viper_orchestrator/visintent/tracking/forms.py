@@ -237,6 +237,14 @@ class VerificationForm(JunctionForm):
         if self.cleaned_data["bad"] == self.cleaned_data["good"]:
             raise ValidationError("cannot be both bad and good")
         self.verified = self.cleaned_data['good']
+        if (
+            self.verified is False
+            and len(self.cleaned_data['image_tags']) == 0
+            and len(self.cleaned_data['verification_notes']) == 0
+        ):
+            self.errors['needs justification: '] = (
+                'To mark an image as bad, you must provide tags or notes.'
+            )
         self._construct_image_tag_attrs()
         del self.cleaned_data['image_tags']
 
