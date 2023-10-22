@@ -1,18 +1,19 @@
 :root {
     --light-tint-0: rgba(255, 250, 255, 0.1);
     --light-tint-1: rgba(255, 250, 255, 0.18);
-    --dark-tint-0: rgba(5, 0, 5, 0.1);
-    --silver: #dee1e3;
-    --celeste: #5fc5c6;
-    --royal-violet: #6d3dba;
-    --slate: #466B6C;
+    --dark-tint-0: rgba(5, 0, 5, 0.1);;
     --night-black: #111111;
     --astronomical-twilight: #161819;
+    --static-gray: #3B3B3E;
+    --slate: #466B6C;
+    --silver: #dee1e3;
+    --royal-violet: #6d3dba;
+    --blue-hour: #223bbb;
+    --celeste: #5fc5c6;
     --phosphor-green: #00CC11;
+    --ambiguous-flare: #D79A00;
     --old-led: #BB2222;
 }
-
-
 @font-face {
   font-family: 'Titillium Web';
   font-style: normal;
@@ -60,14 +61,9 @@ select, textarea {
     font-size: 15px;
     font-family: "Fira Mono", monospace;
 }
-
-
 select option:checked {
     box-shadow: 0 0 1rem 1rem var(--royal-violet) inset;
-    color: white;
-}
-select::-moz-selection {
-    var(--royal-violet);
+    color: var(--silver);
 }
 h1, h2, h3, h4, .metadata-title {
     font-family: 'Titillium Web', sans-serif;
@@ -162,6 +158,8 @@ aside {
 .verification-form-container {
     flex-direction: column;
     max-width: 25vw;
+    border-top: 1px solid var(--slate);
+    padding-top: 1rem;
 }
 .verification-form-container .vertical-form-field textarea,
 .verification-form-container .vertical-form-field select{
@@ -171,6 +169,12 @@ aside {
     font-size:20px;
     margin-bottom:0.3rem;
 }
+.verification-form-container .good-bad-field {
+    display: flex;
+    text-align: left;
+    max-width: fit-content;
+}
+
 .verification-form-container .good-bad-field label {
     font-size: 30px;
     margin-right:0.25rem;
@@ -220,8 +224,8 @@ aside {
 .flex-panel {
     flex-shrink: 1;
     flex-grow: 0.7;
-    max-height: 11vh;
-    max-width: 55%;
+    max-height: 50%;
+    max-width: 50%;
     margin: 1.5rem;
 }
 .flex-panel img {
@@ -269,7 +273,7 @@ aside {
         flex-direction: column;
     }
     .shrinking-text {
-        max-height: 25rem;
+        max-height: 50vh;
     }
     .split-flex-panel-main {
         max-width:75%
@@ -286,6 +290,16 @@ aside {
         flex-grow: 1;
         flex-shrink: 0;
         max-width: 45%
+    }
+    .verification-form-container .good-bad-field {
+        flex-direction: column;
+    }
+    .verification-form-container .vertical-form-field textarea {
+        max-height:5rem;
+    }
+    .flex-panel img {
+        max-height: 50vh;
+        width: auto;
     }
 }
 .metadata-view-title {

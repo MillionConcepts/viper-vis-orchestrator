@@ -2,6 +2,7 @@
 import json
 import shutil
 from collections import defaultdict
+from typing import Optional
 
 from cytoolz import groupby
 from django.core.handlers.wsgi import WSGIRequest
@@ -9,7 +10,8 @@ from django.http import HttpResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
 from sqlalchemy import select
-from sqlalchemy.exc import InvalidRequestError
+from sqlalchemy.exc import InvalidRequestError, NoResultFound
+from sqlalchemy.orm import Session
 
 # noinspection PyUnresolvedReferences
 from viper_orchestrator.config import DATA_ROOT, PRODUCT_ROOT
@@ -52,17 +54,22 @@ def imageview(
     request: WSGIRequest,
     session=None,
     assign_record_form=None,
+    verification_form=None,
     pid=None,
+    rec_id=None,
     **_regex_kwargs,
 ) -> HttpResponse:
-    if pid is None:
-        pid = request.path.strip("/")
     try:
-        record = get_one(ImageRecord, pid, "_pid", session=session)
-    except InvalidRequestError:
+        if rec_id is not None:
+            record = get_one(ImageRecord, int(rec_id))
+        else:
+            if pid is None:
+                pid = request.path.strip("/")
+            record = get_one(ImageRecord, pid, "_pid", session=session)
+    except NoResultFound:
+        suffix = f"id {rec_id}" if rec_id is not None else f"product id {pid}"
         return HttpResponse(
-            f"No image in the database has product id {pid}.",
-            status=404,
+            f"No image in the database has {suffix}.", status=404,
         )
     label_path_stub = record.file_path.replace(".tif", ".json")
     with (DATA_ROOT / label_path_stub).open() as stream:
@@ -81,6 +88,8 @@ def imageview(
         reqerr = reqerr[0]
     else:
         reqerr = None
+    if verification_form is None:
+        verification_form = VerificationForm(image_record=record)
     return render(
         request,
         "image_view.html",
@@ -97,7 +106,7 @@ def imageview(
             "rec_id": record.id,
             "pagetitle": record._pid,
             "request_url": request_url,
-            "verification_form": VerificationForm(image_record=record),
+            "verification_form": verification_form,
             "reqerr": reqerr
         },
     )
@@ -151,6 +160,23 @@ def imagerequest(request: WSGIRequest) -> HttpResponse:
 
 
 @never_cache
+@autosession
+def submitverification(
+    request: WSGIRequest, session: Optional[Session] = None
+) -> DjangoResponseType:
+    image_record = get_one(ImageRecord, int(request.POST['rec_id']))
+    form = VerificationForm(
+        request.POST, session=session, image_record=image_record
+    )
+    if not form.is_valid():
+        return imageview(
+            request, rec_id=request.POST['rec_id'], verification_form=form
+        )
+    form.commit(session=session)
+    return imageview(request, rec_id=request.POST['rec_id'])
+
+
+@never_cache
 def submitrequest(request: WSGIRequest) -> DjangoResponseType:
     """
     handle request submission and redirect to errors or success notification
@@ -159,29 +185,17 @@ def submitrequest(request: WSGIRequest) -> DjangoResponseType:
     form = RequestForm.from_wsgirequest(request, submitted=True)
     if form.is_valid() is False:
         return render(request, "image_request.html", {"form": form})
-    with OSession() as session:
-        try:
-            row = _create_or_update_entry(
-                form,
-                session,
-                "id",
-                extra_attrs=(
-                    "imaging_mode",
-                    "camera_type",
-                    "hazcams",
-                    "generalities",
-                ),
-            )
-            session.commit()
-        except ValueError as ve:
-            form.add_error(None, str(ve))
-            return render(request, "image_request.html", {"form": form})
-        if (fileobj := request.FILES.get("supplementary_file")) is not None:
-            filepath = request_supplementary_path(row.id, fileobj.name)
-            shutil.rmtree(filepath.parent, ignore_errors=True)
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-            with open(filepath, "wb") as stream:
-                stream.write(fileobj.read())
+    try:
+        form.commit()
+    except ValueError as ve:
+        form.add_error(None, str(ve))
+        return render(request, "image_request.html", {"form": form})
+    if (fileobj := request.FILES.get("supplementary_file")) is not None:
+        filepath = request_supplementary_path(form.id, fileobj.name)
+        shutil.rmtree(filepath.parent, ignore_errors=True)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        with open(filepath, "wb") as stream:
+            stream.write(fileobj.read())
     return redirect("/success")
 
 

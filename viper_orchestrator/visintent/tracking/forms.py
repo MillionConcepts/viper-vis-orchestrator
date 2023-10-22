@@ -1,7 +1,7 @@
 """conventional django forms module"""
 import datetime as dt
 from functools import cached_property
-from typing import Optional
+from typing import Optional, Union
 
 from django import forms
 from django.core.exceptions import ValidationError
@@ -136,37 +136,47 @@ class AssignRecordForm(forms.Form):
 class VerificationForm(JunctionForm):
     """form for VIS verification of individual images."""
 
+    @autosession
     def __init__(
         self,
         *args,
         image_record: Optional[ImageRecord] = None,
+        rec_id: Optional[Union[int, str]] = None,
         pid: Optional[str] = None,
+        session=None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        if image_record is None and pid is None:
-            raise TypeError(
-                "Cannot construct this form without a product ID or an "
-                "ImageRecord object"
-            )
-        elif image_record is None:
-            try:
-                with OSession() as session:
-                    image_record = session.scalars(
-                        select(ImageRecord).where(ImageRecord._pid == pid)
-                    ).one()
-            except InvalidRequestError:
-                raise InvalidRequestError(
-                    "Cannot find a unique image matching this product ID"
+        try:
+            if image_record is None and pid is None and rec_id is None:
+                raise TypeError(
+                    "Cannot construct this form without a product ID or an "
+                    "ImageRecord object"
                 )
+            elif image_record is not None:
+                pass
+            elif rec_id is not None:
+                self.image_record = get_one(
+                    ImageRecord, int(rec_id), session=session
+                )
+            elif pid is not None:
+                self.image_record = get_one(
+                    ImageRecord, pid, pivot="_pid", session=session
+                )
+        except InvalidRequestError:
+            raise InvalidRequestError(
+                "Cannot find a unique image matching this product ID"
+            )
         self.image_record = image_record
+        self.rec_id = self.image_record.id
 
-    good = forms.BooleanField()
-    bad = forms.BooleanField()
+    good = forms.BooleanField(required=False)
+    bad = forms.BooleanField(required=False)
     image_tags = forms.MultipleChoiceField(
         widget=forms.SelectMultiple(
             attrs={"id": "image-tags", "value": "", "placeholder": ""}
         ),
+        required=False,
         choices=[(name, name) for name in TAG_NAMES],
     )
     verification_notes = forms.CharField(
@@ -175,8 +185,10 @@ class VerificationForm(JunctionForm):
                 "id": "verification-notes",
                 "placeholder": "any additional notes on image quality",
             }
-        )
+        ),
+        required=False
     )
+    table_class = ImageRecord
 
     @property
     def junc_rules(self):
@@ -184,7 +196,7 @@ class VerificationForm(JunctionForm):
             JuncImageRecordTag: {
                 "target": ImageTag,
                 "populator": self._populate_from_junc_image_record_tag,
-                "pivot": ("image_record_id", "id"),
+                "pivot": ("image_record_id", "rec_id"),
                 "junc_pivot": "image_tag",
                 "self_attr": "image_record",
                 "form_field": "image_tag",
@@ -202,9 +214,9 @@ class VerificationForm(JunctionForm):
         """construct JuncImageRecordTag attrs from form content"""
         for tag in self.cleaned_data["image_tags"]:
             attrs = {
-                "name": session.scalars(
+                "image_tag": session.scalars(
                     select(ImageTag).where(ImageTag.name == tag)
-                )
+                ).one()
             }
             self.junc_specs[JuncImageRecordTag].append(attrs)
 
@@ -242,9 +254,7 @@ class RequestForm(JunctionForm):
                 elif field_name in dir(image_request):
                     field.initial = getattr(image_request, field_name)
             self.id = image_request.id
-            with OSession() as session:
-                self._populate_junc_fields(session)
-
+            self._populate_junc_fields()
         else:
             self.product_ids = set()
         if len(self.product_ids) > 0:
@@ -484,6 +494,13 @@ class RequestForm(JunctionForm):
                 "populator": self._populate_from_junc_image_request_ldst,
             }
         }
+    extra_attrs = (
+        "imaging_mode",
+        "camera_type",
+        "hazcams",
+        "generalities",
+        "request_time"
+    )
 
     def _populate_from_junc_image_request_ldst(self, junc_rows):
         ldst_hypotheses, critical = [], []
@@ -495,19 +512,17 @@ class RequestForm(JunctionForm):
         self.fields["critical"].choices = [(h, h) for h in ldst_hypotheses]
         self.fields["critical"].initial = critical
 
-    def _construct_relations(self):
+    @autosession
+    def _construct_ldst_specs(self, session=None):
         """construct JuncImageRequestLDST attrs from form content"""
         if "ldst_hypotheses" not in self.cleaned_data:
             return
-        with OSession() as session:
-            for hyp in self.cleaned_data["ldst_hypotheses"]:
-                attrs = {
-                    "critical": hyp in self.cleaned_data["critical"],
-                    "ldst": session.scalars(
-                        select(LDST).where(LDST.id == hyp)
-                    ).one(),
-                }
-                self._relations[JuncImageRequestLDST].append(attrs)
+        for hyp in self.cleaned_data["ldst_hypotheses"]:
+            attrs = {
+                "critical": hyp in self.cleaned_data["critical"],
+                "ldst":  get_one(LDST, hyp)
+            }
+            self.junc_specs[JuncImageRequestLDST].append(attrs)
 
     @staticmethod
     def _image_request_to_camera_request(request: ImageRequest):
@@ -560,7 +575,7 @@ class RequestForm(JunctionForm):
 
     def clean(self):
         super().clean()
-        self._construct_relations()
+        self._construct_ldst_specs()
         self._reformat_camera_request()
         if len(self.cleaned_data.get("luminaires", [])) > 2:
             raise ValidationError("A max of two luminaires may be requested")
@@ -568,8 +583,7 @@ class RequestForm(JunctionForm):
             self.cleaned_data["luminaires"] = ["default"]
         for k, v in self.cleaned_data.items():
             if (
-                isinstance(v, (list, tuple))
-                and k not in self.association_rules
+                isinstance(v, (list, tuple)) and k not in self.junc_rules
             ):
                 # TODO: ensure comma separation is good enough
                 self.cleaned_data[k] = ",".join(v)
@@ -585,7 +599,7 @@ class RequestForm(JunctionForm):
         "ldst_hypotheses",
         "critical",
     )
-
+    pk_field = "id"
     # this is actually an optional set of integers, but, in form submission,
     # we retain / parse it as a string for UI reasons. TODO, maybe: clean
     #  that up

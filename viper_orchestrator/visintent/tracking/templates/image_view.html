@@ -20,7 +20,57 @@
             <img src="{{ browse_url }}" alt="browse image for {{ pid }}">
         </div>
     </div>
-    <div id="status-panel" class="flex-panel" style="flex-shrink: 0;font-size: 24px; max-height:100%">
+    <div id="verification-container">
+        <form id='verification-form'
+              method="POST"
+              action="/submitverification"
+              {% if verification_form.errors %}
+              style="display: inherit;">
+              {% else %}
+              style="display:none;">
+              {% endif %}
+        <h3 style="font-family:'Fira Mono',monospace; font-size:28px">VIS verification</h3>
+        <div id='verification-form-container' class="vertical-form-container verification-form-container">
+        {% if verification_form.errors %}
+            {{ verification_form.errors }}
+        {% endif %}
+        <div id="good-bad-field-div" class="good-bad-field" style="margin-bottom:1.5rem">
+            <div>
+            <label for="{{ verification_form.good.id }}">
+                {{ verification_form.good.label }}</label>{{ verification_form.good }}
+            </div>
+            <div>
+            <label for="{{ verification_form.bad.id }}"
+                style="margin-left:1rem;">{{ verification_form.bad.label }}</label>
+                {{ verification_form.bad }}
+            </div>
+        </div>
+        {% for field in verification_form %}
+        {% if field.name == 'good' or field.name == 'bad' %}
+        {% else %}
+        <div id="{{ field.name }}-field-div"
+             class="{{ field.widget_type }}-field vertical-form-field">
+            <label for="{{ field.id }}">{{ field.label }}</label>
+            {{ field }}
+        </div>
+        {% endif %}
+        {% endfor %}
+         <label>
+            <input name="rec_id" value="{{ rec_id }}" style="display: none">
+         </label>
+        <button type="submit"
+                name="submitverification"
+                formaction="/submitverification"
+                style="align-self: flex-start;
+                font-size:24px;
+                font-family:'Fira Mono',monospace;
+                background-color:#6d3dba;
+                color:white;"
+        >submit</button>
+        </div>
+    </form>
+    </div>
+    <div id="status-panel" class="flex-panel" style="flex-shrink: 0;font-size: 24px; max-height:100%;">
         <div id="link-container" style="display:flex">
             <div class="horizontal-plain-links" style="margin-left: 0">
                 <p>links:</p>
@@ -35,7 +85,7 @@
         <h4>review status</h4>
             <p id="vis-verification-p">
                 <a id="vis-verification-a" style="margin-left:0.25rem"
-                   onclick="toggleVisibility('verification-form', true)"></a>
+                   onclick="toggleVisibility('verification-form')"></a>
             </p>
             <p id="vis-evaluation-p">
                 <a id="vis-evaluation-a" style="margin-left: 0.25rem; margin-right:0"></a>
@@ -48,7 +98,7 @@
         </div>
         <div id="request-id-display" style="display: flex; flex-direction: column">
         {% if assign_record_form.req_id.errors %}
-        <p style="font-size: 16pt; color:red">{{ reqerr }}</p>
+        <p style="font-size: 16pt; color:#BB2222">{{ reqerr }}</p>
         {% endif %}
         <div id="request-display-format" style="display:flex;flex-direction: row">
         {% if evaluation != "no request" %}
@@ -86,43 +136,6 @@
         </form>
         </div>
         </div>
-        <form id='verification-form' method="POST" action="/submitverification" style="display:none;" >
-            <h3 style="font-family:'Fira Mono',monospace; font-size:28px">VIS verification</h3>
-            <div id='verification-form-container' class="vertical-form-container verification-form-container" style="border-top: 1px solid white; padding-top:1rem">
-            {% if verification_form.errors %}
-                {{ verification_form.errors }}
-            {% endif %}
-            <div id="good-bad-field-div" class="good-bad-field" style="margin-bottom:1.5rem">
-                <label for="{{ verification_form.good.id }}">
-                    {{ verification_form.good.label }}</label>{{ verification_form.good }}
-                <label for="{{ verification_form.bad.id }}"
-                    style="margin-left:1rem;">{{ verification_form.bad.label }}</label>
-                    {{ verification_form.bad }}
-            </div>
-            {% for field in verification_form %}
-            {% if field.name == 'good' or field.name == 'bad' %}
-            {% else %}
-            <div id="{{ field.name }}-field-div"
-                 class="{{ field.widget_type }}-field vertical-form-field">
-                <label for="{{ field.id }}">{{ field.label }}</label>
-                {{ field }}
-            </div>
-            {% endif %}
-            {% endfor %}
-             <label>
-                <input name="rec_id" value="{{ rec_id }}" style="display: none">
-             </label>
-            <button type="submit"
-                    name="submitverification"
-                    formaction="/submitverification"
-                    style="align-self: flex-start;
-                    font-size:24px;
-                    font-family:'Fira Mono',monospace;
-                    background-color:#6d3dba;
-                    color:white;"
-            >submit</button>
-        </div>
-    </form>
     </div>
 <script src="{% static 'js/visibility.js' %}"></script>
 <script>

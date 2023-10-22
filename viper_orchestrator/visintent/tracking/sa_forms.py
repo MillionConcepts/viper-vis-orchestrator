@@ -10,7 +10,7 @@ from sqlalchemy.exc import NoResultFound, InvalidRequestError
 from sqlalchemy.orm import Session, object_session
 
 from viper_orchestrator.db.session import autosession
-from viper_orchestrator.db.table_utils import get_one
+from viper_orchestrator.db.table_utils import get_one, pk
 from viper_orchestrator.utils import get_argnames
 from viper_orchestrator.typing import AppRule, JuncRow, JuncRule
 
@@ -40,10 +40,10 @@ class SAForm(forms.Form):
         data = {k: v for k, v in self.cleaned_data.items()}
         data |= {attr: getattr(self, attr) for attr in self.extra_attrs}
         try:
-            if hasattr(self, self.pivot):
-                ref = getattr(self, self.pivot)
-            elif self.pivot in self.base_fields.keys():
-                ref = self.cleaned_data[self.pivot]
+            if hasattr(self, self.pk_field):
+                ref = getattr(self, self.pk_field)
+            elif self.pk_field in self.base_fields.keys():
+                ref = self.cleaned_data[self.pk_field]
             else:
                 raise NotImplementedError
         except (NotImplementedError, AttributeError):
@@ -52,16 +52,20 @@ class SAForm(forms.Form):
             raise TypeError("mangled pivot definition")
         except KeyError:
             raise ValueError(
-                f"defined pivot {self.pivot} not an attribute of self or a "
-                f"member of self.base_fields"
+                f"defined pk attribute {self.pk_field} not an attribute of "
+                f"self or a member of self.base_fields"
             )
         try:
-            row = get_one(self.table_class, ref, self.pivot, session=session)
+            row = get_one(
+                self.table_class,
+                getattr(self, self.pk_field),
+                session=session
+            )
             for k, v in data.items():
                 setattr(row, k, v)
             self._row = row
         except NoResultFound:
-            data[self.pivot] = ref
+            data[self.pk_field] = ref
             valid = set(dir(self.table_class))
             if constructor_method is None:
                 constructor = self.table_class
@@ -88,7 +92,7 @@ class SAForm(forms.Form):
         session.commit()
 
     _row: AppRule = None
-    pivot: str = "id"
+    pk_field: str
     table_class: type[AppRule]
     extra_attrs: tuple[str] = ()
 
@@ -111,33 +115,36 @@ class JunctionForm(SAForm):
 
     @autosession
     def get_relations(
-        self,
-        table: type[JuncRow],
-        session: Optional[Session] = None,
-        force_remake: bool = False
+        self, table: type[JuncRow], *, session: Optional[Session] = None,
     ) -> dict[str, list[JuncRow]]:
-        if 'existing' in (ad := self._relations[table]).keys():
-            juncs = set(ad.get('present', ())).union(ad.get('missing', ()))
-            if (
-                all(object_session(j) is session for j in juncs)
-                and force_remake is False
-            ):
-                return self._relations[table]
+        rel = self._relations[table]
+        if len(extant := rel.get('existing', [])) > 0:
+            if all(object_session(j) is session for j in extant):
+                return rel
         rules = self.junc_rules[table]
         junc_reference, referent = rules["pivot"]
         # noinspection PyTypeChecker
         exist_selector = select(table).where(
             getattr(table, junc_reference) == getattr(self, referent)
         )
-        adict = defaultdict(list)
-        # noinspection PyTypeChecker
-        adict['existing'] = session.scalars(exist_selector).all()
+        rel['existing'] = session.scalars(exist_selector).all()
+        return rel['existing']
+
+    def _build_commit(self, table, *, session):
+        rel = self._relations[table]
+        if not all(object_session(r) is session for r in rel['existing']):
+            rel['existing'] = self.get_relations(table, session=session)
         specs = {i: s for i, s in enumerate(self.junc_specs[table])}
+        rules = self.junc_rules[table]
+        adict = defaultdict(list, {'existing': rel['existing']})
         for junc_row in adict['existing']:
-            matches = [
-                (i, s) for i, s in specs.items()
-                if s == getattr(junc_row, rules["junc_pivot"])
-            ]
+            matches = []
+            for i, s in specs.items():
+                if (row := s.get('junc_pivot')) is None:
+                    continue
+                pk_field = pk(row)
+                if getattr(row, pk_field) == getattr(junc_row, pk_field):
+                    matches.append(s)
             # mark table entries not specified in this form for deletion
             if len(matches) == 0:
                 adict['missing'].append(junc_row)
@@ -162,6 +169,7 @@ class JunctionForm(SAForm):
                 for attr, val in s.items():
                     setattr(junc_row, attr, val)
                 setattr(junc_row, rules["self_attr"], row)
+                adict['new'].append(junc_row)
         self._relations[table] = dict(adict)
         return self._relations[table]
 
@@ -174,9 +182,12 @@ class JunctionForm(SAForm):
     ):
         removed = []
         for table in self.junc_rules.keys():
-            related = self.get_relations(table, session, force_remake)
-            session.add_all(related['existing'])
-            removed += related['missing']
+            self.get_relations(table, session=session)
+            related = self._build_commit(table, session=session)
+            # already-present rows (under the key 'present') are already
+            # attached to session
+            session.add_all(related.get('new', []))
+            removed += related.get('missing', [])
         row = self.get_row(session, force_remake, constructor_method)
         session.add(row)
         for r in removed:
@@ -184,9 +195,9 @@ class JunctionForm(SAForm):
         session.commit()
 
     @autosession
-    def _populate_junc_fields(self, session: Optional[Session] = None):
+    def _populate_junc_fields(self, *, session: Optional[Session] = None):
         for table, rules in self.junc_rules.items():
-            existing = self.get_relations(table, session)
+            existing = self.get_relations(table, session=session)
             if len(existing) != 0:
                 rules["populator"](existing)
 
