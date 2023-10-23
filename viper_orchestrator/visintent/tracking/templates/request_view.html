@@ -4,7 +4,7 @@
 {% include "layouts/nav.html" %}
 <div id="form-content">
     {% if form.capture_id == ""%}
-        <h3>viewing intent information for capture id(s) {{ form.capture_id }}  <a href="/imagerequest?request_id={{ form.id }}">edit</a></h3>
+        <h3>viewing intent information for capture id(s) {{ form.capture_id }}  <a href="/imagerequest?request_id={{ form.req_id }}">edit</a></h3>
         {% if form.product_ids|length > 0 %}
             <h4>associated product ids:</h4>
             {% for product_id in form.product_ids %}{{ product_id }}{% endfor %}
@@ -13,11 +13,11 @@
             <input type="text" style="display: none;" id="hidden-capture-id-input" name="capture_id" value={{ form.capture_id }}>
         </label>
     {% else %}
-        <h3>viewing image request {{ form.id }}
-            <a href="/imagerequest?request_id={{ form.id }}">[edit]</a>
+        <h3>viewing image request {{ form.req_id }}
+            <a href="/imagerequest?req_id={{ form.req_id }}">[edit]</a>
         </h3>
         <label for="hidden-id-input">
-            <input type="number" style="display: none;" id="hidden-id-input" name="id" value={{ form.id }}>
+            <input type="number" style="display: none;" id="hidden-id-input" name="req_id" value={{ form.req_id }}>
         </label>
     {% endif %}
     <p class="metadata-view-title">{{ form.status.label }}</p>

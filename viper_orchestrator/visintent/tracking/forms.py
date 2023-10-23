@@ -1,6 +1,6 @@
 """conventional django forms module"""
 import datetime as dt
-from functools import cached_property
+from functools import cached_property, wraps, partial
 from typing import Optional, Union
 
 from django import forms
@@ -30,12 +30,12 @@ from vipersci.vis.db.ldst import LDST
 from vipersci.vis.db.light_records import luminaire_names
 
 
-def initialize_fields():
-    with OSession() as init_session:
-        hypotheses = init_session.scalars(select(LDST)).all()
-        ldst_ids = [hypothesis.id for hypothesis in hypotheses]
-        image_tags = init_session.scalars(select(ImageTag)).all()
-        tags = [tag.name for tag in image_tags]
+@autosession
+def initialize_fields(session=None):
+    hypotheses = session.scalars(select(LDST)).all()
+    ldst_ids = [hypothesis.id for hypothesis in hypotheses]
+    image_tags = session.scalars(select(ImageTag)).all()
+    tags = [tag.name for tag in image_tags]
     return {"ldst_ids": ldst_ids, "tags": tags}
 
 
@@ -44,7 +44,30 @@ LDST_IDS = FIELDS["ldst_ids"]
 TAG_NAMES = FIELDS["tags"]
 
 
+def _db_init_trywrap(func):
+    """
+    sugar for handling exceptions in attempts to init forms from db records
+    """
+
+    @wraps(func)
+    def trywrapped(self, entry, *identifiers, **kwargs):
+        try:
+            func(self, entry, *identifiers, **kwargs)
+        except (NoResultFound, InvalidRequestError):
+            raise NoResultFound(
+                f"No {entry.__class__.__name__} with id(s): "
+                f"{tuple(filter(None, identifiers))} exists"
+            )
+        except ValueError as ve:
+            if "int" in str(ve):
+                raise TypeError("specified identifier must be an integer")
+            raise ve
+
+    return trywrapped
+
+
 class CarelessMultipleChoiceField(forms.MultipleChoiceField):
+
     """
     aggressively skip Django's default choice validation.
     intended when we want to modify a field's options dynamically and don't
@@ -59,20 +82,8 @@ class CarelessMultipleChoiceField(forms.MultipleChoiceField):
         pass
 
 
-# class RequestAssignmentField(forms.IntegerField):
-#
-#     def validate(self, _):
-#         return
-#
-#     def clean(self, value):
-#         value = self.to_python(value)
-#         try:
-#             get_one(ImageRecord, value)
-#
-#         self.validate(value)
-#
-
 class AssignRecordForm(forms.Form):
+
     """very simple form for associating an ImageRecord with an ImageRequest."""
 
     @autosession
@@ -81,20 +92,19 @@ class AssignRecordForm(forms.Form):
         if self.is_bound:
             self.rec_id = int(args[0]["rec_id"])
             return
-        try:
-            self.rec_id = int(rec_id)
-            if req_id not in (None, ""):
-                self.req_id = int(req_id)
-            else:
-                self.req_id = None
-            # wasteful to do this lookup twice, but best for strictness --
-            # never want to put an unbound version of this form on a page
-            get_one(ImageRecord, self.rec_id, session=session)
-        except ValueError:
-            raise ValueError("ids must be integers")
-        except NoResultFound:
-            raise ValueError(f"No image with record id {rec_id} exists.")
+        self._init_from_db(rec_id, req_id, session)
         self.fields["req_id"].initial = self.req_id
+
+    @_db_init_trywrap
+    def _init_from_db(self, rec_id, req_id, session):
+        self.rec_id = int(rec_id)
+        if req_id not in (None, ""):
+            self.req_id = int(req_id)
+        else:
+            self.req_id = None
+        # wasteful to do this lookup twice, but best for strictness --
+        # never want to put an unbound version of this form on a page
+        get_one(ImageRecord, self.rec_id, session=session)
 
     req_id = forms.IntegerField(
         label="request id",
@@ -104,14 +114,14 @@ class AssignRecordForm(forms.Form):
     @autosession
     def clean(self, session=None):
         super().clean()
-        if 'req_id' in self.errors:
+        if "req_id" in self.errors:
             # lazy way to override default phrase i don't like
-            self.errors['req_id'] = ["request id must be an integer."]
+            self.errors["req_id"] = ["request id must be an integer."]
             return
-        self.req_id = self.cleaned_data['req_id']
+        self.req_id = self.cleaned_data["req_id"]
         try:
             get_one(ImageRequest, self.req_id, session=session)
-        except InvalidRequestError:
+        except (InvalidRequestError, NoResultFound):
             self.add_error(
                 "req_id", f"no ImageRequest with id {self.req_id} exists"
             )
@@ -133,6 +143,66 @@ class AssignRecordForm(forms.Form):
         session.commit()
 
 
+def _populate_from_junc_image_request_ldst(self, junc_rows):
+    """shared populator for forms that access JuncImageRequestLDST"""
+    ldst_hypotheses, critical = [], []
+    for row in junc_rows:
+        ldst_hypotheses.append(row.ldst_id)
+        if row.critical is True:
+            critical.append(row.ldst_id)
+    self.fields["ldst_hypotheses"].initial = ldst_hypotheses
+    self.fields["critical"].choices = [(h, h) for h in ldst_hypotheses]
+    self.fields["critical"].initial = critical
+
+
+def ldst_junc_rules(self):
+    """
+    shared junc rule constructor for forms that access JuncImageRequestLDST
+    """
+    return {
+        "target": LDST,
+        "pivot": ("image_request_id", "req_id"),
+        "junc_pivot": "ldst",
+        "self_attr": "image_request",
+        "form_field": "ldst_hypotheses",
+        "populator": partial(_populate_from_junc_image_request_ldst, self)
+    }
+
+
+class EvaluationForm(JunctionForm):
+    """form for science evaluation of image requests."""
+
+    @autosession
+    def __init__(
+        self,
+        *args,
+        image_request: Optional[ImageRequest] = None,
+        req_id: Optional[Union[int, str]] = None,
+        session=None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self._initialize_from_db(image_request, req_id, session)
+
+    @_db_init_trywrap
+    def _initialize_from_db(self, image_request, req_id, session):
+        if image_request is None and req_id is None:
+            raise TypeError(
+                "Cannot construct this form without an ImageRequest id "
+                "(pk) or an ImageRequest object"
+            )
+        elif image_request is not None:
+            self.image_request = image_request
+        else:
+            self.image_request = get_one(
+                ImageRequest, int(req_id), session=session
+            )
+
+    @property
+    def junc_rules(self):
+        return {JuncImageRequestLDST: ldst_junc_rules(self)}
+
+
 class VerificationForm(JunctionForm):
     """form for VIS verification of individual images."""
 
@@ -147,36 +217,34 @@ class VerificationForm(JunctionForm):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        try:
-            if image_record is None and pid is None and rec_id is None:
-                raise TypeError(
-                    "Cannot construct this form without a product ID or an "
-                    "ImageRecord object"
-                )
-            elif image_record is not None:
-                pass
-            elif rec_id is not None:
-                self.image_record = get_one(
-                    ImageRecord, int(rec_id), session=session
-                )
-            elif pid is not None:
-                self.image_record = get_one(
-                    ImageRecord, pid, pivot="_pid", session=session
-                )
-        except InvalidRequestError:
-            raise InvalidRequestError(
-                "Cannot find a unique image matching this product ID"
-            )
-        self.image_record = image_record
+        self._initialize_from_db(image_record, pid, rec_id, session=session)
         self.rec_id = self.image_record.id
         self.verified = self.image_record.verified
         if self.verified is not None:
-            self.fields['bad'].initial = not self.verified
-            self.fields['good'].initial = self.verified
-        self.fields['verification_notes'].initial = (
-            self.image_record.verification_notes
-        )
+            self.fields["bad"].initial = not self.verified
+            self.fields["good"].initial = self.verified
+        self.fields[
+            "verification_notes"
+        ].initial = self.image_record.verification_notes
         self._populate_junc_fields()
+
+    @_db_init_trywrap
+    def _initialize_from_db(self, image_record, pid, rec_id, *, session):
+        if image_record is None and pid is None and rec_id is None:
+            raise TypeError(
+                "Cannot construct this form without a product ID, an "
+                "ImageRecord pk, or an ImageRecord object"
+            )
+        elif image_record is not None:
+            self.image_record = image_record
+        elif rec_id is not None:
+            self.image_record = get_one(
+                ImageRecord, int(rec_id), session=session
+            )
+        elif pid is not None:
+            self.image_record = get_one(
+                ImageRecord, pid, pivot="_pid", session=session
+            )
 
     good = forms.BooleanField(required=False)
     bad = forms.BooleanField(required=False)
@@ -194,7 +262,7 @@ class VerificationForm(JunctionForm):
                 "placeholder": "any additional notes on image quality",
             }
         ),
-        required=False
+        required=False,
     )
     table_class = ImageRecord
     pk_field = "rec_id"
@@ -211,7 +279,8 @@ class VerificationForm(JunctionForm):
                 "form_field": "image_tags",
             }
         }
-    extra_attrs = ('verified',)
+
+    extra_attrs = ("verified",)
 
     def _populate_from_junc_image_record_tag(self, junc_rows):
         tag_names = []
@@ -236,17 +305,17 @@ class VerificationForm(JunctionForm):
             raise ValidationError("must select good or bad")
         if self.cleaned_data["bad"] == self.cleaned_data["good"]:
             raise ValidationError("cannot be both bad and good")
-        self.verified = self.cleaned_data['good']
+        self.verified = self.cleaned_data["good"]
         if (
             self.verified is False
-            and len(self.cleaned_data['image_tags']) == 0
-            and len(self.cleaned_data['verification_notes']) == 0
+            and len(self.cleaned_data["image_tags"]) == 0
+            and len(self.cleaned_data["verification_notes"]) == 0
         ):
-            self.errors['needs justification: '] = (
-                'To mark an image as bad, you must provide tags or notes.'
-            )
+            self.errors[
+                "needs justification: "
+            ] = "To mark an image as bad, you must provide tags or notes."
         self._construct_image_tag_attrs()
-        del self.cleaned_data['image_tags']
+        del self.cleaned_data["image_tags"]
 
     verified: bool
 
@@ -275,7 +344,7 @@ class RequestForm(JunctionForm):
                     )
                 elif field_name in dir(image_request):
                     field.initial = getattr(image_request, field_name)
-            self.id = image_request.id
+            self.req_id = image_request.id
             self._populate_junc_fields()
         else:
             self.product_ids = set()
@@ -292,18 +361,18 @@ class RequestForm(JunctionForm):
         # TODO, maybe: is this pathing a little sketchy?
         try:
             filepath = next(
-                request_supplementary_path(self.id).parent.iterdir(),
+                request_supplementary_path(self.req_id).parent.iterdir(),
             )
         except (StopIteration, FileNotFoundError, AttributeError):
             return None, None
-        file_url = REQUEST_FILE_URL / f"request_{self.id}/{filepath.name}"
+        file_url = REQUEST_FILE_URL / f"request_{self.req_id}/{filepath.name}"
         return filepath.name, file_url
 
     @classmethod
-    def from_request_id(cls, *args, rid):
+    def from_request_id(cls, *args, req_id):
         with OSession() as session:
             # noinspection PyTypeChecker
-            selector = select(ImageRequest).where(ImageRequest.id == rid)
+            selector = select(ImageRequest).where(ImageRequest.id == req_id)
             return cls(*args, image_request=session.scalars(selector).one())
 
     @classmethod
@@ -312,8 +381,8 @@ class RequestForm(JunctionForm):
         # identify existing request by request primary key
         info = wsgirequest.POST if submitted is True else wsgirequest.GET
         args = () if submitted is False else (info,)
-        if (rid := info.get("request_id")) is not None:
-            return cls.from_request_id(*args, rid=rid)
+        if (req_id := info.get("req_id")) is not None:
+            return cls.from_request_id(*args, req_id=req_id)
         # otherwise simply populate / create blank form
         return cls(*args)
 
@@ -506,33 +575,17 @@ class RequestForm(JunctionForm):
 
     @cached_property
     def junc_rules(self):
-        return {
-            JuncImageRequestLDST: {
-                "target": LDST,
-                "pivot": ("image_request_id", "id"),
-                "junc_pivot": "ldst",
-                "self_attr": "image_request",
-                "form_field": "ldst_hypotheses",
-                "populator": self._populate_from_junc_image_request_ldst,
-            }
-        }
+        return {JuncImageRequestLDST: ldst_junc_rules(self)}
+
     extra_attrs = (
         "imaging_mode",
         "camera_type",
         "hazcams",
         "generalities",
-        "request_time"
+        "request_time",
     )
 
-    def _populate_from_junc_image_request_ldst(self, junc_rows):
-        ldst_hypotheses, critical = [], []
-        for row in junc_rows:
-            ldst_hypotheses.append(row.ldst_id)
-            if row.critical is True:
-                critical.append(row.ldst_id)
-        self.fields["ldst_hypotheses"].initial = ldst_hypotheses
-        self.fields["critical"].choices = [(h, h) for h in ldst_hypotheses]
-        self.fields["critical"].initial = critical
+
 
     @autosession
     def _construct_ldst_specs(self, session=None):
@@ -542,7 +595,7 @@ class RequestForm(JunctionForm):
         for hyp in self.cleaned_data["ldst_hypotheses"]:
             attrs = {
                 "critical": hyp in self.cleaned_data["critical"],
-                "ldst":  get_one(LDST, hyp)
+                "ldst": get_one(LDST, hyp),
             }
             self.junc_specs[JuncImageRequestLDST].append(attrs)
 
@@ -604,9 +657,7 @@ class RequestForm(JunctionForm):
         if not self.cleaned_data.get("luminaires"):
             self.cleaned_data["luminaires"] = ["default"]
         for k, v in self.cleaned_data.items():
-            if (
-                isinstance(v, (list, tuple)) and k not in self.junc_rules
-            ):
+            if isinstance(v, (list, tuple)) and k not in self.junc_rules:
                 # TODO: ensure comma separation is good enough
                 self.cleaned_data[k] = ",".join(v)
         self.request_time = dt.datetime.now().astimezone(dt.timezone.utc)
@@ -621,12 +672,12 @@ class RequestForm(JunctionForm):
         "ldst_hypotheses",
         "critical",
     )
-    pk_field = "id"
+    pk_field = "req_id"
     # this is actually an optional set of integers, but, in form submission,
     # we retain / parse it as a string for UI reasons. TODO, maybe: clean
     #  that up
     product_ids: Optional[set[str]] = None
-    id: Optional[int] = None
+    req_id: Optional[int] = None
     request_time: Optional[dt.datetime] = None
     table_class = ImageRequest
     imaging_mode = None

@@ -20,7 +20,7 @@ from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
 DjangoResponseType = Union[HttpResponse, HttpResponseRedirect]
 """valid, in-use return types for django view functions"""
 
-AppRule = Union[ImageRequest, ImageRecord, ProtectedListEntry]
+AppTable = Union[ImageRequest, ImageRecord, ProtectedListEntry]
 """non-junc tables we interact with at runtime"""
 
 JuncRow = Union[JuncImageRecordTag, JuncImageRequestLDST]

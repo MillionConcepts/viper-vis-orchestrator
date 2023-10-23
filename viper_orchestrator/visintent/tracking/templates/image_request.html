@@ -4,11 +4,11 @@
 {% include "layouts/nav.html" %}
 <form method="POST" action="/submitrequest"
   enctype="multipart/form-data" style="max-width: 50vw">
-    {% if form.id is not None %}
-        <h2>editing image request {{ form.id }}</h2>
+    {% if form.req_id is not None %}
+        <h2>editing image request {{ form.req_id }}</h2>
 {#        <p class="placeholder-text">placeholder: a way to delete me</p>#}
         <label for="hidden-request-id-input">
-            <input type="number" style="display: none;" id="hidden-request-id-input" name="request_id" value={{ form.id }}>
+            <input type="number" style="display: none;" id="hidden-request-id-input" name="req_id" value={{ form.req_id }}>
         </label>
         {% if form.product_ids|length > 0 %}
             <h4>associated product ids:</h4>
@@ -22,12 +22,12 @@
         {{ form.errors }}
     {% endif %}
     <div class="vertical-form-container">
-        {% if form.id is None %}
+        {% if form.req_id is None %}
             <div id="status-hider" style="display: none">
         {% endif %}
             <label for={{ form.status.id }}>{{ form.status.label}}</label>
             {{ form.status }}
-        {% if form.id is None %}
+        {% if form.req_id is None %}
             </div>
         {% endif %}
         {% for field in form %}

@@ -103,8 +103,8 @@ def imageview(
                 BROWSE_URL + record.file_path.replace(".tif", "_browse.jpg")
             ),
             "evaluation": evaluation,
-            "image_url": record.file_path,
-            "label_url": DATA_ROOT / label_path_stub,
+            "image_url": DATA_URL + record.file_path,
+            "label_url": DATA_URL + label_path_stub,
             "metadata": metadata,
             "pid": record._pid,
             "rec_id": record.id,
@@ -141,7 +141,7 @@ def imagerequest(request: WSGIRequest) -> HttpResponse:
     # these variables are used only for non-editing display
     showpano = bound["camera_request"]() == "navcam_panorama"
     showslice = (bound["need_360"]() is True) and showpano
-    if form.id is None and editing is False:
+    if form.req_id is None and editing is False:
         return HttpResponse(
             "cannot generate view for nonexistent image request", status=400
         )
@@ -195,7 +195,7 @@ def submitrequest(request: WSGIRequest) -> DjangoResponseType:
         form.add_error(None, str(ve))
         return render(request, "image_request.html", {"form": form})
     if (fileobj := request.FILES.get("supplementary_file")) is not None:
-        filepath = request_supplementary_path(form.id, fileobj.name)
+        filepath = request_supplementary_path(form.req_id, fileobj.name)
         shutil.rmtree(filepath.parent, ignore_errors=True)
         filepath.parent.mkdir(parents=True, exist_ok=True)
         with open(filepath, "wb") as stream:
@@ -216,10 +216,10 @@ def requestlist(request):
                 "title": row.title,
                 "request_time": row.request_time,
                 "view_url": (
-                    f"/imagerequest?request_id={row.id}&editing=false"
+                    f"/imagerequest?req_id={row.id}&editing=false"
                 ),
                 "justification": row.justification,
-                "request_id": row.id,
+                "req_id": row.id,
                 "pagetitle": "Image Request List",
                 "status": row.status.name,
             }
@@ -347,10 +347,10 @@ def imagelist(request, session=None):
             "image_request_name": "create",
             "image_request_url": "/imagerequest",
         }
-        for request_id, captures in capturesets.items():
+        for req_id, captures in capturesets.items():
             if int(row.capture_id) in captures:
                 record["image_request_name"] = "edit"
-                record["image_request_url"] += f"?request_id={request_id}"
+                record["image_request_url"] += f"?req_id={req_id}"
         if record["image_request_name"] == "create":
             # i.e., we didn't find an existing request
             record["image_request_url"] += f"?capture_id={row.capture_id}"

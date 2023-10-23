@@ -99,7 +99,7 @@ for cluster, request in zip(clusters, requests):
     fakewsgi = FakeWSGIRequest(
         {
             "capture-id": ",".join(str(p.capture_id) for p in cluster),
-            "id": str(request.id),
+            "id": str(request.req_id),
         }
     )
     # use the cluster's capture id(s) to assign all associated ImageRecords

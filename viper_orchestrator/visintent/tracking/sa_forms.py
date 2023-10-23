@@ -1,4 +1,9 @@
-"""base classes to help glue Django forms to SQLAlchemy."""
+"""
+base classes to help glue Django forms to SQLAlchemy. Note that these are not
+formal ABCs because this interferes with Django's metaclass structure.
+however, they should always be subclassed, and attempts to instantiate these
+classes will raise NotImplementedErrors.
+"""
 from collections import defaultdict
 from functools import cached_property
 from typing import Mapping, Optional
@@ -12,18 +17,23 @@ from sqlalchemy.orm import Session, object_session
 from viper_orchestrator.db.session import autosession
 from viper_orchestrator.db.table_utils import get_one, pk
 from viper_orchestrator.utils import get_argnames
-from viper_orchestrator.typing import AppRule, JuncRow, JuncRule
+from viper_orchestrator.typing import AppTable, JuncRow, JuncRule
 
 
 class SAForm(forms.Form):
     """abstract-ish class for forms that help manage SQLAlchemy ORM objects"""
+
+    def __init__(self, *args, **kwargs):
+        if self.__class__.__name__ == 'SAForm':
+            raise NotImplementedError("Only instantiate subclasses of SAForm.")
+        super().__init__(*args, **kwargs)
 
     def get_row(
         self,
         session: Session,
         force_remake: bool = False,
         constructor_method: Optional[str] = None
-    ) -> AppRule:
+    ) -> AppTable:
         """
         NOTE: autosession is not enabled for this function because an ad-hoc 
         Session will cause the function to return detached DeclarativeBase
@@ -91,9 +101,9 @@ class SAForm(forms.Form):
         session.add(self.get_row(session, force_remake, constructor_method))
         session.commit()
 
-    _row: AppRule = None
-    pk_field: str
-    table_class: type[AppRule]
+    _row: AppTable = None
+    pk_field: str = None
+    table_class: type[AppTable] = None
     extra_attrs: tuple[str] = ()
 
 
@@ -105,6 +115,10 @@ class JunctionForm(SAForm):
     """
 
     def __init__(self, *args, **kwargs):
+        if self.__class__.__name__ == 'JunctionForm':
+            raise NotImplementedError(
+                "Only instantiate subclasses of JunctionForm."
+            )
         super().__init__(*args, **kwargs)
         # retrieved-from-database or ready-to-be-committed related objects,
         # organized by table and status

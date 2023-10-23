@@ -122,12 +122,13 @@ def get_one(
     Will always throw a NoResultFound exception if no row is found.
     """
     if pivot is None:
-        row = session.get(table, value)
-        if row is not None:
-            return row
+        result = session.get(table, value)
+    else:
+        # noinspection PyTypeChecker
+        scalars = session.scalars(
+            select(table).where(getattr(table, pivot) == value)
+        )
+        result = getattr(scalars, "first" if strict is False else "one")()
+    if result is None:
         raise NoResultFound
-    # noinspection PyTypeChecker
-    scalars = session.scalars(
-        select(table).where(getattr(table, pivot) == value)
-    )
-    return getattr(scalars, "first" if strict is False else "one")()
+    return result
