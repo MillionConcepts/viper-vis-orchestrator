@@ -5,6 +5,7 @@ from typing import Optional, Union
 
 from django import forms
 from django.core.exceptions import ValidationError
+from dustgoggles.structures import listify
 from sqlalchemy import select
 from sqlalchemy.exc import InvalidRequestError, NoResultFound
 
@@ -143,18 +144,6 @@ class AssignRecordForm(forms.Form):
         session.commit()
 
 
-def _populate_from_junc_image_request_ldst(self, junc_rows):
-    """shared populator for forms that access JuncImageRequestLDST"""
-    ldst_hypotheses, critical = [], []
-    for row in junc_rows:
-        ldst_hypotheses.append(row.ldst_id)
-        if row.critical is True:
-            critical.append(row.ldst_id)
-    self.fields["ldst_hypotheses"].initial = ldst_hypotheses
-    self.fields["critical"].choices = [(h, h) for h in ldst_hypotheses]
-    self.fields["critical"].initial = critical
-
-
 def ldst_junc_rules(self):
     """
     shared junc rule constructor for forms that access JuncImageRequestLDST
@@ -165,7 +154,7 @@ def ldst_junc_rules(self):
         "junc_pivot": "ldst",
         "self_attr": "image_request",
         "form_field": "ldst_hypotheses",
-        "populator": partial(_populate_from_junc_image_request_ldst, self)
+        "populator": getattr(self, "_populate_from_junc_image_request_ldst")
     }
 
 
@@ -183,6 +172,8 @@ class EvaluationForm(JunctionForm):
     ):
         super().__init__(*args, **kwargs)
         self._initialize_from_db(image_request, req_id, session)
+        self._populate_junc_fields()
+        a = 1
 
     @_db_init_trywrap
     def _initialize_from_db(self, image_request, req_id, session):
@@ -197,6 +188,7 @@ class EvaluationForm(JunctionForm):
             self.image_request = get_one(
                 ImageRequest, int(req_id), session=session
             )
+        self.req_id = self.image_request.id
 
     @property
     def junc_rules(self):
@@ -337,11 +329,15 @@ class RequestForm(JunctionForm):
             }
             for field_name, field in self.fields.items():
                 if field_name == "compression":
-                    field.initial = image_request.compression.name.capitalize()
+                    field.initial = image_request.compression.name
+                elif field_name == "status":
+                    field.initial = image_request.status.name
                 elif field_name == "camera_request":
                     field.initial = self._image_request_to_camera_request(
                         image_request
                     )
+                elif field_name == 'luminaires':
+                    field.initial = image_request.luminaires.split(',')
                 elif field_name in dir(image_request):
                     field.initial = getattr(image_request, field_name)
             self.req_id = image_request.id
@@ -355,7 +351,6 @@ class RequestForm(JunctionForm):
                 if field_name not in self.required_intent_fields:
                     field.required, field.disabled = False, True
             self.fields["critical"].disabled = False
-            self.fields["luminaires"].initial = None
 
     def filepaths(self):
         # TODO, maybe: is this pathing a little sketchy?
@@ -369,11 +364,11 @@ class RequestForm(JunctionForm):
         return filepath.name, file_url
 
     @classmethod
-    def from_request_id(cls, *args, req_id):
-        with OSession() as session:
-            # noinspection PyTypeChecker
-            selector = select(ImageRequest).where(ImageRequest.id == req_id)
-            return cls(*args, image_request=session.scalars(selector).one())
+    @autosession
+    def from_request_id(cls, *args, req_id, session=None):
+        return cls(
+            *args, image_request=get_one(ImageRequest, req_id, session=session)
+        )
 
     @classmethod
     def from_wsgirequest(cls, wsgirequest, submitted: bool):
@@ -385,6 +380,17 @@ class RequestForm(JunctionForm):
             return cls.from_request_id(*args, req_id=req_id)
         # otherwise simply populate / create blank form
         return cls(*args)
+
+    def _populate_from_junc_image_request_ldst(self, junc_rows):
+        """shared populator for forms that access JuncImageRequestLDST"""
+        ldst_hypotheses, critical = [], []
+        for row in junc_rows:
+            ldst_hypotheses.append(row.ldst_id)
+            if row.critical is True:
+                critical.append(row.ldst_id)
+        self.fields["ldst_hypotheses"].initial = ldst_hypotheses
+        self.fields["critical"].choices = [(h, h) for h in ldst_hypotheses]
+        self.fields["critical"].initial = critical
 
     # other fields are only needed for outgoing image requests, not for
     # specifying intent metadata for already-taken images
@@ -581,11 +587,8 @@ class RequestForm(JunctionForm):
         "imaging_mode",
         "camera_type",
         "hazcams",
-        "generalities",
         "request_time",
     )
-
-
 
     @autosession
     def _construct_ldst_specs(self, session=None):
@@ -595,7 +598,7 @@ class RequestForm(JunctionForm):
         for hyp in self.cleaned_data["ldst_hypotheses"]:
             attrs = {
                 "critical": hyp in self.cleaned_data["critical"],
-                "ldst": get_one(LDST, hyp),
+                "ldst": get_one(LDST, hyp, session=session),
             }
             self.junc_specs[JuncImageRequestLDST].append(attrs)
 
@@ -630,12 +633,13 @@ class RequestForm(JunctionForm):
         UI.
         """
         # note that only aftcams/navcams have imaging_mode
+        if self.camera_type != 'HAZCAM':
+            self.hazcams = ('Any',)
         if self.fields["camera_request"].disabled is True:
             return
         request = self.cleaned_data["camera_request"]
         ct, mode = request.split("_", maxsplit=1)
         self.camera_type = ct.upper()
-        self.generalities = ("Any",)
         if self.camera_type == "HAZCAM":
             if mode == "any":
                 self.hazcams = ("Any",)
@@ -645,7 +649,6 @@ class RequestForm(JunctionForm):
                     vis_instrument_aliases[request.replace("_", " ")]
                 ]
         else:
-            self.hazcams = ("Any",)
             self.imaging_mode = mode.upper()
 
     def clean(self):
@@ -683,7 +686,6 @@ class RequestForm(JunctionForm):
     imaging_mode = None
     camera_type = None
     hazcams = None
-    generalities = None
 
 
 class PLSubmission(JunctionForm):

@@ -19,7 +19,7 @@ from viper_orchestrator.db import OSession
 from viper_orchestrator.db.session import autosession
 from viper_orchestrator.db.table_utils import (
     image_request_capturesets,
-    get_one,
+    get_one, delete_cascade,
 )
 from viper_orchestrator.exceptions import (
     AlreadyDeletedError,
@@ -31,7 +31,7 @@ from viper_orchestrator.visintent.tracking.forms import (
     AssignRecordForm,
     PLSubmission,
     RequestForm,
-    VerificationForm,
+    VerificationForm, EvaluationForm,
 )
 from viper_orchestrator.visintent.tracking.forms import (
     request_supplementary_path,
@@ -46,6 +46,7 @@ from viper_orchestrator.visintent.visintent.settings import (
 )
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest, Status
+from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
 
 
 @never_cache
@@ -78,8 +79,8 @@ def imageview(
     if record.image_request is None:
         evaluation, request_url, req_id = "no request", None, ""
     else:
-        # TODO: add logic
-        request_url, req_id = None, record.image_request.id
+        req_id = record.image_request.id
+        request_url = f"imagerequest?req_id={req_id}&editing=True"
         evaluation = "not"
         # these will usually be None in the on-disk labels
         metadata["image_request_id"] = req_id
@@ -146,6 +147,8 @@ def imagerequest(request: WSGIRequest) -> HttpResponse:
             "cannot generate view for nonexistent image request", status=400
         )
     filename, file_url = form.filepaths()
+    # if form.req_id is not None:
+    #     evaluation = EvaluationForm(req_id=form.req_id)
     try:
         return render(
             request,
@@ -191,8 +194,8 @@ def submitrequest(request: WSGIRequest) -> DjangoResponseType:
         return render(request, "image_request.html", {"form": form})
     try:
         form.commit()
-    except ValueError as ve:
-        form.add_error(None, str(ve))
+    except (ValueError, TypeError) as err:
+        form.add_error(None, str(err))
         return render(request, "image_request.html", {"form": form})
     if (fileobj := request.FILES.get("supplementary_file")) is not None:
         filepath = request_supplementary_path(form.req_id, fileobj.name)

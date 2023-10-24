@@ -4,7 +4,7 @@ from typing import Collection, Union, Any, Optional, TYPE_CHECKING
 
 from sqlalchemy import select, inspect
 from sqlalchemy.exc import NoResultFound
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, DeclarativeBase
 
 from viper_orchestrator.db import OSession
 from viper_orchestrator.db.session import autosession
@@ -132,3 +132,31 @@ def get_one(
     if result is None:
         raise NoResultFound
     return result
+
+
+@autosession
+def delete_cascade(
+    obj, junc_names: Collection[str] = (), session=None
+):
+    for name in junc_names:
+        relationship = getattr(
+            obj.__mapper__.relationships, name
+        )
+        self_field = relationship.back_populates
+        table = relationship.mapper.class_
+        selector = select(table).where(getattr(table, self_field) == obj)
+        scalars = session.scalars(selector).all()
+        for s in scalars:
+            session.delete(s)
+    session.commit()
+    session.delete(obj)
+    session.commit()
+
+
+@autosession
+def delete_image_request(request=None, req_id=None, session=None):
+    if request is None and req_id is None:
+        raise TypeError
+    if request is None:
+        request = get_one(ImageRequest, req_id)
+    delete_cascade(request, ("ldst_associations",), session=session)
