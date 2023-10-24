@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from hostess.subutils import Viewer
 from hostess.utilities import timeout_factory
-from viper_orchestrator.config import BASES, DB_PATH
+from viper_orchestrator.config import BASES, DB_ROOT
 from vipersci.vis.db.image_tags import ImageTag, taglist
 from vipersci.vis.db.ldst import LDST
 
@@ -22,7 +22,7 @@ MANAGED_PROCESSES = []
 
 
 def shut_down_postgres():
-    shutdown = Viewer.from_command("pg_ctl", "stop", D=DB_PATH)
+    shutdown = Viewer.from_command("pg_ctl", "stop", D=DB_ROOT)
     shutdown.wait()
 
 
@@ -38,8 +38,8 @@ LUNAR_RADIUS = 1737400
 SPATIAL_REF_VALUES = f"( 910101, 'ROVER', 910101, '+proj=stere +lat_0={LAT_0} +lon_0={LON_0} +R={LUNAR_RADIUS} +units=m')"
 # commands to initialize new postgres database
 INIT_COMMANDS = (
-    f"initdb -D {DB_PATH}",
-    f"postgres -D {DB_PATH}",
+    f"initdb -D {DB_ROOT}",
+    f"postgres -D {DB_ROOT}",
     f'psql -d postgres -c "CREATE EXTENSION postgis"',
     f"""psql -d postgres -c "INSERT into spatial_ref_sys (srid, auth_name, auth_srid, proj4text) values {SPATIAL_REF_VALUES}\"""",
 )
@@ -103,25 +103,25 @@ def run_postgres_command(command, initializing=False) -> Viewer:
 
 
 # if the database doesn't exist at all, create and configure it
-if not Path(DB_PATH).exists():
+if not Path(DB_ROOT).exists():
     try:
-        DB_PATH.mkdir(exist_ok=True, parents=True)
+        DB_ROOT.mkdir(exist_ok=True, parents=True)
     except FileNotFoundError:
         raise FileNotFoundError(
-            f"database path {DB_PATH} does not exist and cannot be constructed"
+            f"database path {DB_ROOT} does not exist and cannot be constructed"
         )
     except PermissionError as pe:
         raise PermissionError(
-            f"database path {DB_PATH} does not exist and this process lacks "
+            f"database path {DB_ROOT} does not exist and this process lacks "
             f"write permissions to its parent(s): {pe}"
         )
     for cmd in INIT_COMMANDS:
         run_postgres_command(cmd, initializing=True)
         if cmd.startswith("initdb"):
             # edit conf file to ensure timezone is set to UTC
-            text = (DB_PATH / "postgresql.conf").open().read()
+            text = (DB_ROOT / "postgresql.conf").open().read()
             text = re.sub("\ntimezone.*?\n", "\ntimezone = 'UTC'\n", text)
-            with (DB_PATH / "postgresql.conf").open("w") as stream:
+            with (DB_ROOT / "postgresql.conf").open("w") as stream:
                 stream.write(text)
         # if we start the server ourselves, kill it on exit
         atexit.register(shut_down_postgres)
@@ -129,7 +129,7 @@ if not Path(DB_PATH).exists():
 else:
     # TODO: check and make sure time is set to UTC
     # launch postgres server if it's not running
-    pginit = run_postgres_command(f"postgres -D {DB_PATH}")
+    pginit = run_postgres_command(f"postgres -D {DB_ROOT}")
 # shared sqlalchemy Engine for application
 ENGINE = create_engine(f"postgresql:///postgres")
 

@@ -3,32 +3,37 @@
 <body>
 {% include "layouts/nav.html" %}
 <form method="POST" action="/submitrequest"
-  enctype="multipart/form-data" style="max-width: 50vw"
->
-    {% if form.capture_id|length > 0 %}
-        <h3>editing intent information for capture id(s) {{ form.capture_id }}</h3>
+  enctype="multipart/form-data" style="max-width: 50vw">
+    {% if form.req_id is not None %}
+        <h2>editing image request {{ form.req_id }}</h2>
+{#        <p class="placeholder-text">placeholder: a way to delete me</p>#}
+        <label for="hidden-request-id-input">
+            <input type="number" style="display: none;" id="hidden-request-id-input" name="req_id" value={{ form.req_id }}>
+        </label>
         {% if form.product_ids|length > 0 %}
             <h4>associated product ids:</h4>
             {% for product_id in form.product_ids %}{{ product_id }}
             {% endfor %}
         {% endif %}
-        <label for="hidden-capture-id-input">
-            <input type="text" style="display: none;" id="hidden-capture-id-input" name="capture_id" value={{ form.capture_id }}>
-        </label>
-    {% elif form.id is not None %}
-        <h2>editing image request</h2>
-{#        <p class="placeholder-text">placeholder: a way to delete me</p>#}
-        <label for="hidden-request-id-input">
-            <input type="number" style="display: none;" id="hidden-request-id-input" name="request_id" value={{ form.id }}>
-        </label>
     {% else %}
         <h2>new image request</h2>
     {% endif %}
     {% if form.errors %}
         {{ form.errors }}
     {% endif %}
-    <div style="margin-top: 1rem; display: flex; flex-direction: column;">
+    <div class="vertical-form-container">
+        {% if form.req_id is None %}
+            <div id="status-hider" style="display: none">
+        {% endif %}
+            <label for={{ form.status.id }}>{{ form.status.label}}</label>
+            {{ form.status }}
+        {% if form.req_id is None %}
+            </div>
+        {% endif %}
         {% for field in form %}
+        <div id="{{ field.name }}-field-div"
+             class="{{ field.widget_type }}-field vertical-form-field">
+        {% if field.name != 'status' %}
             <label
                 {% if field.name in form.slice_fields %}class="pano-only slice-field"
                 {% elif field.name in form.pano_only_fields %}class="pano-only"
@@ -40,12 +45,17 @@
                 {% endif %}
             </label>
             {{field}}
+        {% endif %}
+        </div>
         {% endfor %}
     </div>
     <div style="margin-top: 1rem;">
         <button type="submit" name="submitrequest" formaction="/submitrequest">submit</button>
     </div>
 </form>
+<div id="evaluation">
+    <h3>evaluation</h3>
+</div>
 <script>
     const ldstSelect = document.getElementById('ldst-elements');
     const ldstCritical = document.getElementById('ldst-critical');

@@ -3,20 +3,42 @@
 <body>
 {% include "layouts/nav.html" %}
 <div>
-    <table id="image-table" style="padding-left:10vw">
-    {% for record in records %}
-        <tr>
-            <td>
-                <img src="{{ record.thumbnail_url }}"
-                     alt="thumbnail for {{ record.product_id }}"
-                     style="height:5rem;width:5rem;padding-right:1rem">
-            </td>
-            <td style="font-size:24px">
-                <a href="/{{ record.product_id }}">{{ record.product_id }}<a>
-            </td>
-        </tr>
+    <div id="instrument-picker" class="horizontal-anchor-container">
+        {% for instrument in records.keys %}
+            <a id="table-{{ instrument }}-anchor"
+               onclick="revealTable('{{ instrument }}')">{{ instrument }}
+            </a>
+        {% endfor %}
+    </div>
+    {% for instrument, images in records.items %}
+        <p id="table-{{ instrument }}-sorry" style="font-size: 18pt">
+            No images from these instruments exist in the VIS database.
+        </p>
+        <table id="table-{{ instrument }}" class="image-table toggle-table">
+            <thead></thead>
+            {% for image in images %}
+            <tr>
+                <td>
+                    <a href="/{{ image.product_id }}">
+                    <img
+                        src="{{ image.thumbnail_url }}"
+                        alt="thumbnail for {{ image.product_id }}"
+                    >
+                    </a>
+                </td>
+                <td>
+                    <a href="/{{ image.product_id }}">{{ image.product_id }}</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
     {% endfor %}
-    </table>
 </div>
+<script src="{% static 'js/visibility.js' %}"></script>
+<script>
+    const defaultTable = "all"
+    document.addEventListener("DOMContentLoaded", revealDefault)
+    document.addEventListener("DOMContentLoaded", addCounts)
+</script>
 </body>
 </html>

@@ -28,8 +28,8 @@ django.setup()
 from viper_orchestrator.visintent.tracking.forms import (
     RequestForm,
     PLSubmission,
-    AlreadyLosslessError,
 )
+from viper_orchestrator.exceptions import AlreadyLosslessError
 from viper_orchestrator.visintent.tracking.views import (
     assign_records_from_capture_ids,
 )
@@ -99,7 +99,7 @@ for cluster, request in zip(clusters, requests):
     fakewsgi = FakeWSGIRequest(
         {
             "capture-id": ",".join(str(p.capture_id) for p in cluster),
-            "id": str(request.id),
+            "id": str(request.req_id),
         }
     )
     # use the cluster's capture id(s) to assign all associated ImageRecords

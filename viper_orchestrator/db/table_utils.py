@@ -1,12 +1,18 @@
 """abstractions for ORM object queries and introspection."""
-from typing import Collection, Union
+from __future__ import annotations
+from typing import Collection, Union, Any, Optional, TYPE_CHECKING
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import select, inspect
+from sqlalchemy.exc import NoResultFound
+from sqlalchemy.orm import Session, DeclarativeBase
 
 from viper_orchestrator.db import OSession
+from viper_orchestrator.db.session import autosession
 from vipersci.vis.db.image_records import ImageRecord, ImageType
 from vipersci.vis.db.image_requests import ImageRequest
+
+if TYPE_CHECKING:
+    from viper_orchestrator.typing import MappedRow
 
 
 def intsplit(comma_separated_numbers: str) -> set[int]:
@@ -16,6 +22,11 @@ def intsplit(comma_separated_numbers: str) -> set[int]:
 
 def collstring(coll: Collection) -> str:
     return ",".join(map(str, coll))
+
+
+def pk(obj: Union[type[MappedRow], MappedRow]) -> str:
+    """get the name of a SQLAlchemy table's first primary key"""
+    return inspect(obj).primary_key[0].name
 
 
 def get_record_attrs(
@@ -90,3 +101,62 @@ def records_from_capture_ids(
         selector = select(ImageRecord).where(cid == ImageRecord.capture_id)
         records += session.scalars(selector).all()
     return records
+
+
+@autosession
+def get_one(
+    table: type[MappedRow],
+    value: Any,
+    pivot: Optional[str] = None,
+    session: Optional[Session] = None,
+    strict: bool = False
+) -> MappedRow:
+    """
+    get a single row from a table based on strict equality between the
+    `value` argument and the value of the field named `pivot` in the `table`.
+    If `pivot` is None, this field to the first primary key of `table` (
+        this operation is also more efficient with an already-open Session, as
+        it can use the Session's pk cache.)
+    If strict is True, will throw an error if more than one row matches the
+        criterion; otherwise returns the top matching row.
+    Will always throw a NoResultFound exception if no row is found.
+    """
+    if pivot is None:
+        result = session.get(table, value)
+    else:
+        # noinspection PyTypeChecker
+        scalars = session.scalars(
+            select(table).where(getattr(table, pivot) == value)
+        )
+        result = getattr(scalars, "first" if strict is False else "one")()
+    if result is None:
+        raise NoResultFound
+    return result
+
+
+@autosession
+def delete_cascade(
+    obj, junc_names: Collection[str] = (), session=None
+):
+    for name in junc_names:
+        relationship = getattr(
+            obj.__mapper__.relationships, name
+        )
+        self_field = relationship.back_populates
+        table = relationship.mapper.class_
+        selector = select(table).where(getattr(table, self_field) == obj)
+        scalars = session.scalars(selector).all()
+        for s in scalars:
+            session.delete(s)
+    session.commit()
+    session.delete(obj)
+    session.commit()
+
+
+@autosession
+def delete_image_request(request=None, req_id=None, session=None):
+    if request is None and req_id is None:
+        raise TypeError
+    if request is None:
+        request = get_one(ImageRequest, req_id)
+    delete_cascade(request, ("ldst_associations",), session=session)

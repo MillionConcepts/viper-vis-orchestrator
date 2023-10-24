@@ -11,14 +11,14 @@ from sqlalchemy import select
 
 import viper_orchestrator.station.definition as vsd
 from viper_orchestrator.config import (
-    DB_PATH, MEDIA_ROOT, PARAMETERS, ROOTS, TEST
+    DB_ROOT, MEDIA_ROOT, PARAMETERS, ROOTS, TEST
 )
 
 # only run this in test mode!
 assert TEST is True
 
 # clean up, start fresh
-shutil.rmtree(DB_PATH, ignore_errors=True)
+shutil.rmtree(DB_ROOT, ignore_errors=True)
 shutil.rmtree(MEDIA_ROOT, ignore_errors=True)
 for folder in ROOTS:
     folder.mkdir(parents=True, exist_ok=True)

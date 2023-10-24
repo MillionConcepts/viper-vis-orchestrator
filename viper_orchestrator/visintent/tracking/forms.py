@@ -1,174 +1,400 @@
 """conventional django forms module"""
 import datetime as dt
-import warnings
-from typing import Optional
+from functools import cached_property, wraps, partial
+from typing import Optional, Union
 
-from cytoolz import keyfilter
 from django import forms
 from django.core.exceptions import ValidationError
+from dustgoggles.structures import listify
 from sqlalchemy import select
+from sqlalchemy.exc import InvalidRequestError, NoResultFound
 
+# noinspection PyUnresolvedReferences
+from viper_orchestrator.config import REQUEST_FILE_ROOT
 from viper_orchestrator.db import OSession
-from viper_orchestrator.db.table_utils import (
-    image_request_capturesets,
-    get_capture_ids,
-    capture_ids_to_product_ids,
+from viper_orchestrator.db.session import autosession
+from viper_orchestrator.db.table_utils import get_one
+from viper_orchestrator.exceptions import (
+    AlreadyLosslessError,
+    AlreadyDeletedError,
 )
-from viper_orchestrator.visintent.tracking.tables import (
-    ProtectedListEntry,
-)
-from viper_orchestrator.visintent.visintent.settings import (
-    MEDIA_ROOT,
-    MEDIA_URL,
-)
+from viper_orchestrator.visintent.tracking.sa_forms import JunctionForm
+from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
+from viper_orchestrator.visintent.visintent.settings import REQUEST_FILE_URL
 from vipersci.pds.pid import vis_instruments, vis_instrument_aliases
-from vipersci.vis.db.image_requests import ImageRequest
+from vipersci.vis.db.image_records import ImageRecord
+from vipersci.vis.db.image_requests import ImageRequest, Status
+from vipersci.vis.db.image_tags import ImageTag
+from vipersci.vis.db.junc_image_record_tags import JuncImageRecordTag
 from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
 from vipersci.vis.db.ldst import LDST
 from vipersci.vis.db.light_records import luminaire_names
 
 
-with OSession() as init_session:
-    hypotheses = init_session.scalars(select(LDST)).all()
-    LDST_IDS = [hypothesis.id for hypothesis in hypotheses]
+@autosession
+def initialize_fields(session=None):
+    hypotheses = session.scalars(select(LDST)).all()
+    ldst_ids = [hypothesis.id for hypothesis in hypotheses]
+    image_tags = session.scalars(select(ImageTag)).all()
+    tags = [tag.name for tag in image_tags]
+    return {"ldst_ids": ldst_ids, "tags": tags}
 
 
-class BadURLError(ValueError):
-    pass
+FIELDS = initialize_fields()
+LDST_IDS = FIELDS["ldst_ids"]
+TAG_NAMES = FIELDS["tags"]
 
 
-# TODO: may be a more clever way to handle this on the frontend
+def _db_init_trywrap(func):
+    """
+    sugar for handling exceptions in attempts to init forms from db records
+    """
+
+    @wraps(func)
+    def trywrapped(self, entry, *identifiers, **kwargs):
+        try:
+            func(self, entry, *identifiers, **kwargs)
+        except (NoResultFound, InvalidRequestError):
+            raise NoResultFound(
+                f"No {entry.__class__.__name__} with id(s): "
+                f"{tuple(filter(None, identifiers))} exists"
+            )
+        except ValueError as ve:
+            if "int" in str(ve):
+                raise TypeError("specified identifier must be an integer")
+            raise ve
+
+    return trywrapped
+
+
 class CarelessMultipleChoiceField(forms.MultipleChoiceField):
+
     """
-    skip choice validation. for fields whose options we may modify dynamically.
+    aggressively skip Django's default choice validation.
+    intended when we want to modify a field's options dynamically and don't
+    want unnecessary handholding interfering with our modifications.
     """
+
+    def __init__(self, *, choices, **kwargs):
+        super().__init__(choices=choices, **kwargs)
+        self.default_validators = []
 
     def validate(self, value):
         pass
 
-    default_validators = []
+
+class AssignRecordForm(forms.Form):
+
+    """very simple form for associating an ImageRecord with an ImageRequest."""
+
+    @autosession
+    def __init__(self, *args, rec_id=None, req_id=None, session=None):
+        super().__init__(*args)
+        if self.is_bound:
+            self.rec_id = int(args[0]["rec_id"])
+            return
+        self._init_from_db(rec_id, req_id, session)
+        self.fields["req_id"].initial = self.req_id
+
+    @_db_init_trywrap
+    def _init_from_db(self, rec_id, req_id, session):
+        self.rec_id = int(rec_id)
+        if req_id not in (None, ""):
+            self.req_id = int(req_id)
+        else:
+            self.req_id = None
+        # wasteful to do this lookup twice, but best for strictness --
+        # never want to put an unbound version of this form on a page
+        get_one(ImageRecord, self.rec_id, session=session)
+
+    req_id = forms.IntegerField(
+        label="request id",
+        widget=forms.TextInput(attrs={"id": "request-id-entry", "value": ""}),
+    )
+
+    @autosession
+    def clean(self, session=None):
+        super().clean()
+        if "req_id" in self.errors:
+            # lazy way to override default phrase i don't like
+            self.errors["req_id"] = ["request id must be an integer."]
+            return
+        self.req_id = self.cleaned_data["req_id"]
+        try:
+            get_one(ImageRequest, self.req_id, session=session)
+        except (InvalidRequestError, NoResultFound):
+            self.add_error(
+                "req_id", f"no ImageRequest with id {self.req_id} exists"
+            )
+
+    @autosession
+    def commit(self, session=None):
+        image_request = get_one(ImageRequest, self.req_id, session=session)
+        image_record = get_one(ImageRecord, self.rec_id, session=session)
+        former_request = image_record.image_request
+        if former_request == image_request:
+            return  # nothing to do!
+        image_request.image_records.append(image_record)
+        session.add(image_request)
+        if former_request is not None:
+            former_request.image_records = [
+                r for r in former_request.image_records if r != image_record
+            ]
+            session.add(former_request)
+        session.commit()
 
 
-class RequestForm(forms.Form):
+def ldst_junc_rules(self):
+    """
+    shared junc rule constructor for forms that access JuncImageRequestLDST
+    """
+    return {
+        "target": LDST,
+        "pivot": ("image_request_id", "req_id"),
+        "junc_pivot": "ldst",
+        "self_attr": "image_request",
+        "form_field": "ldst_hypotheses",
+        "populator": getattr(self, "_populate_from_junc_image_request_ldst")
+    }
+
+
+class EvaluationForm(JunctionForm):
+    """form for science evaluation of image requests."""
+
+    @autosession
+    def __init__(
+        self,
+        *args,
+        image_request: Optional[ImageRequest] = None,
+        req_id: Optional[Union[int, str]] = None,
+        session=None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self._initialize_from_db(image_request, req_id, session)
+        self._populate_junc_fields()
+        a = 1
+
+    @_db_init_trywrap
+    def _initialize_from_db(self, image_request, req_id, session):
+        if image_request is None and req_id is None:
+            raise TypeError(
+                "Cannot construct this form without an ImageRequest id "
+                "(pk) or an ImageRequest object"
+            )
+        elif image_request is not None:
+            self.image_request = image_request
+        else:
+            self.image_request = get_one(
+                ImageRequest, int(req_id), session=session
+            )
+        self.req_id = self.image_request.id
+
+    @property
+    def junc_rules(self):
+        return {JuncImageRequestLDST: ldst_junc_rules(self)}
+
+
+class VerificationForm(JunctionForm):
+    """form for VIS verification of individual images."""
+
+    @autosession
+    def __init__(
+        self,
+        *args,
+        image_record: Optional[ImageRecord] = None,
+        rec_id: Optional[Union[int, str]] = None,
+        pid: Optional[str] = None,
+        session=None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self._initialize_from_db(image_record, pid, rec_id, session=session)
+        self.rec_id = self.image_record.id
+        self.verified = self.image_record.verified
+        if self.verified is not None:
+            self.fields["bad"].initial = not self.verified
+            self.fields["good"].initial = self.verified
+        self.fields[
+            "verification_notes"
+        ].initial = self.image_record.verification_notes
+        self._populate_junc_fields()
+
+    @_db_init_trywrap
+    def _initialize_from_db(self, image_record, pid, rec_id, *, session):
+        if image_record is None and pid is None and rec_id is None:
+            raise TypeError(
+                "Cannot construct this form without a product ID, an "
+                "ImageRecord pk, or an ImageRecord object"
+            )
+        elif image_record is not None:
+            self.image_record = image_record
+        elif rec_id is not None:
+            self.image_record = get_one(
+                ImageRecord, int(rec_id), session=session
+            )
+        elif pid is not None:
+            self.image_record = get_one(
+                ImageRecord, pid, pivot="_pid", session=session
+            )
+
+    good = forms.BooleanField(required=False)
+    bad = forms.BooleanField(required=False)
+    image_tags = forms.MultipleChoiceField(
+        widget=forms.SelectMultiple(
+            attrs={"id": "image-tags", "value": "", "placeholder": ""}
+        ),
+        required=False,
+        choices=[(name, name) for name in TAG_NAMES],
+    )
+    verification_notes = forms.CharField(
+        widget=forms.Textarea(
+            attrs={
+                "id": "verification-notes",
+                "placeholder": "any additional notes on image quality",
+            }
+        ),
+        required=False,
+    )
+    table_class = ImageRecord
+    pk_field = "rec_id"
+
+    @property
+    def junc_rules(self):
+        return {
+            JuncImageRecordTag: {
+                "target": ImageTag,
+                "populator": self._populate_from_junc_image_record_tag,
+                "pivot": ("image_record_id", "rec_id"),
+                "junc_pivot": "image_tag",
+                "self_attr": "image_record",
+                "form_field": "image_tags",
+            }
+        }
+
+    extra_attrs = ("verified",)
+
+    def _populate_from_junc_image_record_tag(self, junc_rows):
+        tag_names = []
+        for row in junc_rows:
+            tag_names.append(row.image_tag.name)
+        self.fields["image_tags"].initial = tag_names
+
+    @autosession
+    def _construct_image_tag_attrs(self, session=None):
+        """construct JuncImageRecordTag attrs from form content"""
+        for tag in self.cleaned_data["image_tags"]:
+            attrs = {
+                "image_tag": session.scalars(
+                    select(ImageTag).where(ImageTag.name == tag)
+                ).one()
+            }
+            self.junc_specs[JuncImageRecordTag].append(attrs)
+
+    def clean(self):
+        super().clean()
+        if "bad" not in self.cleaned_data and "good" not in self.cleaned_data:
+            raise ValidationError("must select good or bad")
+        if self.cleaned_data["bad"] == self.cleaned_data["good"]:
+            raise ValidationError("cannot be both bad and good")
+        self.verified = self.cleaned_data["good"]
+        if (
+            self.verified is False
+            and len(self.cleaned_data["image_tags"]) == 0
+            and len(self.cleaned_data["verification_notes"]) == 0
+        ):
+            self.errors[
+                "needs justification: "
+            ] = "To mark an image as bad, you must provide tags or notes."
+        self._construct_image_tag_attrs()
+        del self.cleaned_data["image_tags"]
+
+    verified: bool
+
+
+class RequestForm(JunctionForm):
     """form for submitting or editing an image request."""
 
     def __init__(
         self,
         *args,
-        capture_id=None,
         image_request: Optional[ImageRequest] = None,
-        request_id=None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.capture_id, self.image_request = capture_id, image_request
-        if self.capture_id is not None and len(self.capture_id) > 0:
-            self.product_ids = capture_ids_to_product_ids(self.capture_id)
-            # want to keep this a string for compatibility with the UI
-            if isinstance(self.capture_id, set):
-                self.capture_id = ",".join(str(ci) for ci in self.capture_id)
-            self.capture_id = self.capture_id.replace(" ", "").strip(",")
+        self.image_request = image_request
+        if self.image_request is not None:
+            self.product_ids = {
+                r._pid for r in self.image_request.image_records
+            }
+            for field_name, field in self.fields.items():
+                if field_name == "compression":
+                    field.initial = image_request.compression.name
+                elif field_name == "status":
+                    field.initial = image_request.status.name
+                elif field_name == "camera_request":
+                    field.initial = self._image_request_to_camera_request(
+                        image_request
+                    )
+                elif field_name == 'luminaires':
+                    field.initial = image_request.luminaires.split(',')
+                elif field_name in dir(image_request):
+                    field.initial = getattr(image_request, field_name)
+            self.req_id = image_request.id
+            self._populate_junc_fields()
+        else:
+            self.product_ids = set()
+        if len(self.product_ids) > 0:
             # make fields not required for already-taken images non-mandatory
             # and prohibit editing request information
             for field_name, field in self.fields.items():
                 if field_name not in self.required_intent_fields:
                     field.required, field.disabled = False, True
-        if image_request is not None:
-            for field_name, field in self.fields.items():
-                if field_name == "compression":
-                    field.initial = image_request.compression.name.capitalize()
-                elif field_name == "camera_request":
-                    field.initial = self._image_request_to_camera_request(
-                        image_request
-                    )
-                elif field_name in dir(image_request):
-                    field.initial = getattr(image_request, field_name)
-            self.id = image_request.id
-            if request_id is not None:
-                warnings.warn(
-                    "request_id and image_request simultaneously passed to "
-                    "RequestForm constructor; undesired behavior may result"
-                )
-        elif request_id is not None:
-            self.id = int(request_id)
-        for table, rules in self.associated_tables.items():
-            if hasattr(self, rules['pivot'][1]):
-                with OSession() as session:
-                    existing = self.get_associations(rules, session)
-                if len(existing) != 0:
-                    getattr(self, f"_populate_from_{table}")(existing)
-        self.pano_only_fields = [
-            field_name
-            for field_name, field in self.fields.items()
-            if "pano-only" in field.widget.attrs.get("class", "")
-        ]
-        self.slice_fields = [
-            field_name
-            for field_name, field in self.fields.items()
-            if "slice-field" in field.widget.attrs.get("class", "")
-        ]
+            self.fields["critical"].disabled = False
 
     def filepaths(self):
         # TODO, maybe: is this pathing a little sketchy?
         try:
             filepath = next(
-                request_supplementary_path(self.id).parent.iterdir(),
+                request_supplementary_path(self.req_id).parent.iterdir(),
             )
         except (StopIteration, FileNotFoundError, AttributeError):
             return None, None
-        # noinspection PyUnboundLocalVariable
-        file_url = (
-            f"{MEDIA_URL}request_supplementary_data/"
-            f"request_{self.id}/{filepath.name}"
-        )
+        file_url = REQUEST_FILE_URL / f"request_{self.req_id}/{filepath.name}"
         return filepath.name, file_url
 
     @classmethod
-    def from_request_id(cls, id):
-        with OSession() as session:
-            # noinspection PyTypeChecker
-            selector = select(ImageRequest).where(ImageRequest.id == id)
-            request = session.scalars(selector).one()
-            return cls(
-                capture_id=get_capture_ids(request), image_request=request
-            )
-
-    @classmethod
-    def from_capture_id(cls, capture_id):
-        request_id = None
-        cset = set(map(int, str(capture_id).split(",")))
-        for rid, cids in image_request_capturesets().items():
-            if cids == cset:
-                return cls.from_request_id(request_id)
-            elif not cset.isdisjoint(cids):
-                raise ValueError(
-                    "proposed image request overlaps partially with "
-                    "assigned capture ids of an existing image request"
-                )
-        return cls(capture_id=capture_id)
-
-    @classmethod
-    def from_wsgirequest(cls, wsgirequest):
-        """intended to be called only from a view function."""
-
-        # identify request by either associated capture id (if it exists!) or
-        # by request primary key
-        info = keyfilter(
-            lambda k: k in ("capture_id", "request_id"), wsgirequest.GET
+    @autosession
+    def from_request_id(cls, *args, req_id, session=None):
+        return cls(
+            *args, image_request=get_one(ImageRequest, req_id, session=session)
         )
-        if ("capture_id" in info) and ("request_id" in info):
-            raise BadURLError(
-                "cannot accept both capture and request id in this URL"
-            )
-        if (rid := info.get("request_id")) is not None:
-            return cls.from_request_id(rid)
-        elif (cid := info.get("capture_id")) is not None:
-            return cls.from_capture_id(cid)
-        return cls()
+
+    @classmethod
+    def from_wsgirequest(cls, wsgirequest, submitted: bool):
+        """intended to be called only from a view function."""
+        # identify existing request by request primary key
+        info = wsgirequest.POST if submitted is True else wsgirequest.GET
+        args = () if submitted is False else (info,)
+        if (req_id := info.get("req_id")) is not None:
+            return cls.from_request_id(*args, req_id=req_id)
+        # otherwise simply populate / create blank form
+        return cls(*args)
+
+    def _populate_from_junc_image_request_ldst(self, junc_rows):
+        """shared populator for forms that access JuncImageRequestLDST"""
+        ldst_hypotheses, critical = [], []
+        for row in junc_rows:
+            ldst_hypotheses.append(row.ldst_id)
+            if row.critical is True:
+                critical.append(row.ldst_id)
+        self.fields["ldst_hypotheses"].initial = ldst_hypotheses
+        self.fields["critical"].choices = [(h, h) for h in ldst_hypotheses]
+        self.fields["critical"].initial = critical
 
     # other fields are only needed for outgoing image requests, not for
     # specifying intent metadata for already-taken images
-    required_intent_fields = ["title", "justification", "ldst"]
+    required_intent_fields = ["title", "justification", "ldst_hypotheses"]
     title = forms.CharField(
         required=True,
         widget=forms.TextInput(
@@ -191,18 +417,27 @@ class RequestForm(forms.Form):
                 "id": "ldst-elements",
                 "value": "",
                 "placeholder": "",
-                "style": 'height: 10rem'
+                "style": "height: 10rem",
             }
         ),
-        choices=[(id_, id_) for id_ in LDST_IDS]
+        initial=[],
+        choices=[(id_, id_) for id_ in LDST_IDS],
     )
     critical = CarelessMultipleChoiceField(
         required=False,
         widget=forms.SelectMultiple(
-            attrs={'id': 'ldst-critical', 'value': '', 'placeholder': ''}
+            attrs={"id": "ldst-critical", "value": "", "placeholder": ""}
         ),
-        choices=[]
+        choices=[],
     )
+
+    status = forms.ChoiceField(
+        required=True,
+        widget=forms.Select(attrs={"id": "status", "value": "WORKING"}),
+        choices=[(e.name, e.name) for e in list(Status)],
+        initial="WORKING",
+    )
+
     users = forms.CharField(
         required=True,
         widget=forms.TextInput(
@@ -324,49 +559,48 @@ class RequestForm(forms.Form):
     )
     supplementary_file = forms.FileField(required=False)
 
-    @property
-    def associated_tables(self):
-        return {
-            'junc_image_request_ldst': {
-                'junc': JuncImageRequestLDST,
-                'target': LDST,
-                'pivot': ('image_request_id', 'id'),
-                'junc_pivot': ('ldst', 'id'),
-                'self_attr': 'image_request',
-            }
-        }
+    # properties to help webpage formatting. they denote fields to hide or
+    # reveal depending on whether a panorama is requested, and, if so, whether
+    # full-360 is selected. they are used on the frontend to add CSS classes
+    # to HTML elements that are then used as references by js.
 
-    def get_associations(self, rules, session):
-        junc, pivot = rules['junc'], rules['pivot']
-        exist_selector = select(junc).where(
-            getattr(junc, pivot[0]) == getattr(self, pivot[1])
-        )
-        existing = session.scalars(exist_selector).all()
-        return existing
+    def _css_class_fields(self, css_class):
+        return [
+            field_name
+            for field_name, field in self.fields.items()
+            if css_class in field.widget.attrs.get("class", "")
+        ]
 
-    def _populate_from_junc_image_request_ldst(self, junc_rows):
-        ldst_hypotheses, critical = [], []
-        for row in junc_rows:
-            ldst_hypotheses.append(row.ldst_id)
-            if row.critical is True:
-                critical.append(row.ldst_id)
-        self.fields['ldst_hypotheses'].initial = ldst_hypotheses
-        self.fields['critical'].choices = [(h, h) for h in ldst_hypotheses]
-        self.fields['critical'].initial = critical
+    @cached_property
+    def pano_only_fields(self):
+        return self._css_class_fields("pano-only")
 
-    def _construct_associations(self):
+    @cached_property
+    def slice_fields(self):
+        return self._css_class_fields("slice-field")
+
+    @cached_property
+    def junc_rules(self):
+        return {JuncImageRequestLDST: ldst_junc_rules(self)}
+
+    extra_attrs = (
+        "imaging_mode",
+        "camera_type",
+        "hazcams",
+        "request_time",
+    )
+
+    @autosession
+    def _construct_ldst_specs(self, session=None):
         """construct JuncImageRequestLDST attrs from form content"""
-        associations = []
-        with OSession() as session:
-            for hyp in self.cleaned_data['ldst_hypotheses']:
-                attrs = {
-                    'critical': hyp in self.cleaned_data['critical'],
-                    'ldst': session.scalars(
-                        select(LDST).where(LDST.id == hyp)
-                    ).one()
-                }
-                associations.append(attrs)
-        self.cleaned_data['junc_image_request_ldst'] = associations
+        if "ldst_hypotheses" not in self.cleaned_data:
+            return
+        for hyp in self.cleaned_data["ldst_hypotheses"]:
+            attrs = {
+                "critical": hyp in self.cleaned_data["critical"],
+                "ldst": get_one(LDST, hyp, session=session),
+            }
+            self.junc_specs[JuncImageRequestLDST].append(attrs)
 
     @staticmethod
     def _image_request_to_camera_request(request: ImageRequest):
@@ -399,10 +633,13 @@ class RequestForm(forms.Form):
         UI.
         """
         # note that only aftcams/navcams have imaging_mode
-        request = self.cleaned_data['camera_request']
+        if self.camera_type != 'HAZCAM':
+            self.hazcams = ('Any',)
+        if self.fields["camera_request"].disabled is True:
+            return
+        request = self.cleaned_data["camera_request"]
         ct, mode = request.split("_", maxsplit=1)
         self.camera_type = ct.upper()
-        self.generalities = ("Any",)
         if self.camera_type == "HAZCAM":
             if mode == "any":
                 self.hazcams = ("Any",)
@@ -412,22 +649,18 @@ class RequestForm(forms.Form):
                     vis_instrument_aliases[request.replace("_", " ")]
                 ]
         else:
-            self.hazcams = ("Any",)
             self.imaging_mode = mode.upper()
 
     def clean(self):
         super().clean()
-        self._construct_associations()
+        self._construct_ldst_specs()
         self._reformat_camera_request()
         if len(self.cleaned_data.get("luminaires", [])) > 2:
             raise ValidationError("A max of two luminaires may be requested")
         if not self.cleaned_data.get("luminaires"):
             self.cleaned_data["luminaires"] = ["default"]
         for k, v in self.cleaned_data.items():
-            if (
-                    isinstance(v, (list, tuple))
-                    and k not in self.associated_tables
-            ):
+            if isinstance(v, (list, tuple)) and k not in self.junc_rules:
                 # TODO: ensure comma separation is good enough
                 self.cleaned_data[k] = ",".join(v)
         self.request_time = dt.datetime.now().astimezone(dt.timezone.utc)
@@ -436,36 +669,26 @@ class RequestForm(forms.Form):
         return self.cleaned_data
 
     ui_only_fields = (
-        'camera_request',
-        'need_360',
-        'supplementary_file',
-        'ldst_hypotheses',
-        'critical'
+        "camera_request",
+        "need_360",
+        "supplementary_file",
+        "ldst_hypotheses",
+        "critical",
     )
-
+    pk_field = "req_id"
     # this is actually an optional set of integers, but, in form submission,
     # we retain / parse it as a string for UI reasons. TODO, maybe: clean
     #  that up
-    capture_id: Optional[str] = None
     product_ids: Optional[set[str]] = None
-    id: Optional[int] = None
+    req_id: Optional[int] = None
     request_time: Optional[dt.datetime] = None
     table_class = ImageRequest
     imaging_mode = None
     camera_type = None
     hazcams = None
-    generalities = None
 
 
-class AlreadyLosslessError(ValidationError):
-    pass
-
-
-class AlreadyDeletedError(ValidationError):
-    pass
-
-
-class PLSubmission(forms.Form):
+class PLSubmission(JunctionForm):
     """form for submitting an entry to the PL"""
 
     def __init__(self, *args, product_id=None, pl_id=None, **kwargs):
@@ -517,4 +740,4 @@ class PLSubmission(forms.Form):
 
 def request_supplementary_path(id_, fn="none"):
     # TODO: naming convention is slightly sketchy
-    return MEDIA_ROOT / f"request_supplementary_data/request_{id_}/{fn}"
+    return REQUEST_FILE_ROOT / f"request_{id_}/{fn}"

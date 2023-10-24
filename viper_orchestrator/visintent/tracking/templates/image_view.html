@@ -2,48 +2,234 @@
 {% include "layouts/head.html" %}
 <body>
 {% include "layouts/nav.html" %}
-
 <div id="layout-container" class="split-flow-container">
     <div
         id="product-container"
-        style="display:flex;flex-direction:row;margin-left:1vw;margin-top:1vh"
-    >
+        class="split-flow-panel-main"
+        style="margin-left:1vw; margin-top:1vh;">
         <div
-                id="metadata-panel"
-                class="flex-panel shrinking-text"
-                style="overflow:scroll"
-        >
+            id="metadata-panel"
+            class="flex-panel shrinking-text"
+            style="overflow:scroll">
             <h3 class="metadata-header">{{ pid }}</h3>
             {% for field, value in metadata.items %}
                 <p class="metadata-row">{{ field }}: {{ value }}</p>
             {% endfor %}
         </div>
         <div id="image-panel" class="flex-panel">
-            <img
-                src="{{ browse_url }}"
-                alt="browse image for {{ pid }}"
-                style="max-width: 90%; height:auto;"
-            >
+            <img src="{{ browse_url }}" alt="browse image for {{ pid }}">
         </div>
     </div>
-    <div id="status-panel" class="flex-panel" style="flex-shrink:0">
-        <div id="link-container">
-            <h3>download</h3>
-            <div id="link-horizontal" style="display:flex;flex-direction:row">
-                <a href="{{ image_url }}" class="big-link">image</a>
-                <a href="{{ browse_url }}" class="big-link">label</a>
+    <div id="verification-container">
+        <form id='verification-form'
+              method="POST"
+              action="/submitverification"
+              {% if verification_form.errors %}
+              style="display: inherit;">
+              {% else %}
+              style="display:none;">
+              {% endif %}
+        <h3 style="font-family:'Fira Mono',monospace; font-size:28px">VIS verification</h3>
+        <div id='verification-form-container' class="vertical-form-container verification-form-container">
+        {% if verification_form.errors %}
+            {{ verification_form.errors }}
+        {% endif %}
+        <div id="good-bad-field-div" class="good-bad-field" style="margin-bottom:1.5rem">
+            <div>
+            <label for="{{ verification_form.good.id }}">
+                {{ verification_form.good.label }}</label>{{ verification_form.good }}
+            </div>
+            <div>
+            <label for="{{ verification_form.bad.id }}"
+                style="margin-left:1rem;">{{ verification_form.bad.label }}</label>
+                {{ verification_form.bad }}
             </div>
         </div>
-        <div id="status-container">
-            <h3>Placeholder for review status</h3>
-            <h3>Placeholder for review links</h3>
+        {% for field in verification_form %}
+        {% if field.name == 'good' or field.name == 'bad' %}
+        {% else %}
+        <div id="{{ field.name }}-field-div"
+             class="{{ field.widget_type }}-field vertical-form-field">
+            <label for="{{ field.id }}">{{ field.label }}</label>
+            {{ field }}
+        </div>
+        {% endif %}
+        {% endfor %}
+         <label>
+            <input name="rec_id" value="{{ rec_id }}" style="display: none">
+         </label>
+        <button type="submit"
+                name="submitverification"
+                formaction="/submitverification"
+                style="align-self: flex-start;
+                font-size:24px;
+                font-family:'Fira Mono',monospace;
+                background-color:#6d3dba;
+                color:white;"
+        >submit</button>
+        </div>
+    </form>
+    </div>
+    <div id="status-panel" class="flex-panel" style="flex-shrink: 0;font-size: 24px; max-height:100%;">
+        <div id="link-container" style="display:flex">
+            <div class="horizontal-plain-links" style="margin-left: 0">
+                <p>links:</p>
+                <a href="{{ image_url }}">image</a>
+                <a href="{{ label_url }}">label</a>
+                {% if request_url != None %}
+                <a href="{{ request_url }}">request</a>
+                {% endif %}
+            </div>
+        </div>
+        <div id="review-status" class="review-container" style="display: flex;">
+        <h4>review status</h4>
+            <p id="vis-verification-p">
+                <a id="vis-verification-a" style="margin-left:0.25rem"
+                   onclick="toggleVisibility('verification-form')"></a>
+            </p>
+            <p id="vis-evaluation-p">
+                <a id="vis-evaluation-a" style="margin-left: 0.25rem; margin-right:0"></a>
+                {% if evaluation == "no request" %}
+                    <a onclick="toggleVisibility(['assign-record-form'])"
+                       style="color: palegoldenrod; margin-left: 0; margin-right: 0">
+                        [assign]</a>
+                {% endif %}
+            </p>
+        </div>
+        <div id="request-id-display" style="display: flex; flex-direction: column">
+        {% if assign_record_form.req_id.errors %}
+        <p style="font-size: 16pt; color:#BB2222">{{ reqerr }}</p>
+        {% endif %}
+        <div id="request-display-format" style="display:flex;flex-direction: row">
+        {% if evaluation != "no request" %}
+        {% if reqerr %}
+        <p id="reassign-p" style="margin-top:0; display:none">
+        {% else %}
+        <p id="reassign-p" style="margin-top:0">
+        {% endif %}
+            request id {{ metadata.image_request_id }} <a
+            id="reassign-anchor"
+            onclick = "toggleVisibility(['assign-record-form', 'reassign-p'])">
+        [reassign]
+        </a>
+        </p>
+        {% endif %}
+        <form id="assign-record-form"
+              {% if reqerr %}
+              style="display: inherit"
+              {% else %}
+              style="display: none"
+              {% endif %}
+              action="assign_record" method="post">
+            <div id="class-application-container" class="record-assign">
+            {{ assign_record_form.req_id.label }}
+            {{ assign_record_form.req_id }}
+            <label for='hidden-record-id-input' style="display: none"></label>
+            <div id="hidden-inputs" style="display: none">
+                <label>
+                    <input name="rec_id" value="{{ assign_record_form.rec_id }}">
+                </label>
+                <label><input name="pid" value="{{ pid }}"></label>
+            </div>
+            <button type="submit">assign</button>
+            </div>
+        </form>
+        </div>
         </div>
     </div>
-</div>
+<script src="{% static 'js/visibility.js' %}"></script>
+<script>
+    const verificationStyle = {
+        'None': {
+            'p-color': 'orange',
+            'p-text': '- not VIS verified',
+            'a-color': 'palegoldenrod',
+            'a-text': '[verify]'
+        },
+        'True': {
+            'p-color': 'lightgreen',
+            'p-text': '- passed VIS',
+            'a-color': 'palegreen',
+            'a-text': '[edit]'
+        },
+        'False': {
+            'p-color': 'salmon',
+            'p-text': '- failed VIS',
+            'a-color': 'lightpink',
+            'a-text': '[edit]'
+        }
+    }["{{ metadata.verified }}"]
+    const evaluationStyle = {
+        'no request': {
+            'p-color': 'orange',
+            'p-text': '- no linked request',
+            'a-color': 'palegoldenrod',
+            'a-text': '[create]',
+            'a-href': '/imagerequest?capture_id={{ metadata.capture_id }}'
+        },
+        'not': {
+            'p-color': 'orange',
+            'p-text': '- not evaluated',
+            'a-color': 'palegoldenrod',
+            'a-text': '[evaluate]',
+            'a-href': '{{ request_url }}'
+        },
+        'incomplete': {
+            'p-color': 'orange',
+            'p-text': '- evaluation incomplete',
+            'a-color': 'lightpink',
+            'a-text': '[continue]',
+            'a-href': '{{ request_url }}'
+        },
+        'partial': {
+            'p-color': 'beige',
+            'p-text': '- partially passed evaluation',
+            'a-color': 'aliceblue',
+            'a-text': '[view/edit]',
+            'a-href': '{{ request_url }}'
+        },
+        'passed': {
+            'p-color': 'lightgreen',
+            'p-text': '- passed evaluation',
+            'a-color': 'palegreen',
+            'a-text': '[view/edit]',
+            'a-href': '{{ request_url }}'
+        },
+        'failed': {
+            'p-color': 'salmon',
+            'p-text': '- failed evaluation',
+            'a-color': 'lightpink',
+            'a-text': '[view/edit]',
+            'a-href': '{{ request_url }}'
+        }
+    }["{{ evaluation }}"]
+    const goodCheck = document.getElementById('id_good')
+    const badCheck = document.getElementById('id_bad')
+    goodCheck.setAttribute("onclick", "turnOff(badCheck)")
+    badCheck.setAttribute("onclick", "turnOff(goodCheck)")
+    const verP = document.getElementById('vis-verification-p')
+    const verA = document.getElementById('vis-verification-a')
+    const evalP = document.getElementById('vis-evaluation-p')
+    const evalA = document.getElementById('vis-evaluation-a')
+    const styleVerificationStatus = function(_event=null) {
+        verP.style.color = verificationStyle['p-color']
+        verA.style.color = verificationStyle['a-color']
+        verA.textContent = verificationStyle['a-text']
+        verP.innerHTML = `${verificationStyle['p-text']} ${verP.innerHTML}`
+    }
+    const styleEvaluationStatus = function(_event=null) {
+        evalP.style.color = evaluationStyle['p-color']
+        evalA.style.color = evaluationStyle['a-color']
+        evalA.textContent = evaluationStyle['a-text']
+        evalA.href = evaluationStyle['a-href']
+        evalP.innerHTML = `${evaluationStyle['p-text']} ${evalP.innerHTML}`
+    }
+    const turnOff = function(element) {
+        element.checked = false
+    }
 
-
-
-
-
+    document.addEventListener("DOMContentLoaded", styleVerificationStatus)
+    document.addEventListener("DOMContentLoaded", styleEvaluationStatus)
+</script>
 </body>
 </html>
