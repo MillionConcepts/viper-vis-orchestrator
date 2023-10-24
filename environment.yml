@@ -37,7 +37,9 @@ dependencies:
   - geoalchemy2
 # dependencies for yamcs & dev stuff
   - beautifulsoup4
+  - gunicorn
   - jupyter
+  - ipython
   - pip
 # yamcs-client wants to install a lower version that is incompatible with
 # hostess, so don't add it to the environment file!
