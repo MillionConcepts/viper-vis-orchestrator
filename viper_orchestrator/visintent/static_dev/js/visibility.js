@@ -60,6 +60,24 @@ const toggleVisibility = function(id, visible= null, style = "inherit") {
     }
 }
 
-const turnOff = function(element) {
-    element.checked = false
+const maybegid = function(obj) {
+    if (obj instanceof Element) {
+        return obj
+    }
+    return gid(obj)
+}
+
+const unCheck = function(element) {
+    maybegid(element).checked = false
+}
+
+const disableCheck = function(target, reference) {
+    const element = maybegid(target)
+    if (reference.checked !== true) {
+        element.checked = false
+        element.disabled = true
+    }
+    else {
+        element.disabled = false
+    }
 }

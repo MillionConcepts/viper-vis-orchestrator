@@ -62,15 +62,22 @@ def initialize_options(session=None):
 OPTIONS = initialize_options()
 LDST_IDS = OPTIONS["ldst_ids"]
 TAG_NAMES = OPTIONS["tags"]
-LDST_EVAL_FIELDS = ('critical', 'evaluation', 'evaluator', 'evaluation_notes')
+LDST_EVAL_FIELDS = ("critical", "evaluation", "evaluator", "evaluation_notes")
 
 
 def _blank_eval_info():
-    return {hyp: {f: None for f in LDST_EVAL_FIELDS} for hyp in LDST_IDS}
+    return {
+        hyp: {f: None for f in LDST_EVAL_FIELDS} | {"relevant": False}
+        for hyp in LDST_IDS
+    }
 
 
 def _ldst_eval_record(row: JuncImageRequestLDST):
-    return {f: getattr(row, f) for f in LDST_EVAL_FIELDS}
+    return {f: getattr(row, f) for f in LDST_EVAL_FIELDS} | {"relevant": True}
+
+
+def _blank_ldst_hypotheses():
+    return {hyp: {"relevant": False, "critical": False} for hyp in LDST_IDS}
 
 
 def _db_init_trywrap(func):
@@ -192,7 +199,6 @@ class EvaluationForm(JunctionForm):
             raise ValueError(f"{ldst_id} is not a known LDST hypothesis.")
         super().__init__(*args, **kwargs)
         self._initialize_from_db(image_request, req_id, session=session)
-        self._populate_junc_fields()
 
     @_db_init_trywrap
     def _initialize_from_db(
@@ -290,11 +296,11 @@ class VerificationForm(JunctionForm):
 
     good = forms.BooleanField(
         required=False,
-        widget=forms.CheckboxInput(attrs={'class': 'good-check'})
+        widget=forms.CheckboxInput(attrs={"class": "good-check"}),
     )
     bad = forms.BooleanField(
         required=False,
-        widget=forms.CheckboxInput(attrs={'class': 'bad-check'})
+        widget=forms.CheckboxInput(attrs={"class": "bad-check"}),
     )
     image_tags = forms.MultipleChoiceField(
         widget=forms.SelectMultiple(
@@ -376,10 +382,12 @@ class RequestForm(JunctionForm):
         self,
         *args,
         image_request: Optional[ImageRequest] = None,
+        ldst_hypotheses: Optional[dict[str, dict[str, bool]]] = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self._eval_info = _blank_eval_info()
+        self.ldst_hypotheses = _blank_ldst_hypotheses()
         self.image_request = image_request
         if self.image_request is not None:
             self.product_ids = {
@@ -402,13 +410,14 @@ class RequestForm(JunctionForm):
             self._populate_junc_fields()
         else:
             self.product_ids = set()
+        if ldst_hypotheses is not None:
+            self.ldst_hypotheses = ldst_hypotheses
         if len(self.product_ids) > 0:
             # make fields not required for already-taken images non-mandatory
             # and prohibit editing request information
             for field_name, field in self.fields.items():
                 if field_name not in self.required_intent_fields:
                     field.required, field.disabled = False, True
-            self.fields["critical"].disabled = False
 
     def filepaths(self):
         # TODO, maybe: is this pathing a little sketchy?
@@ -423,9 +432,15 @@ class RequestForm(JunctionForm):
 
     @classmethod
     @autosession
-    def from_request_id(cls, *args, req_id, session=None):
+    def from_request_id(cls, *args, req_id, ldst_hypotheses, session=None):
         return cls(
-            *args, image_request=get_one(ImageRequest, req_id, session=session)
+            *args,
+            image_request=get_one(
+                ImageRequest,
+                req_id,
+                session=session,
+            ),
+            ldst_hypotheses=ldst_hypotheses,
         )
 
     @classmethod
@@ -433,9 +448,22 @@ class RequestForm(JunctionForm):
         """intended to be called only from a view function."""
         # identify existing request by request primary key
         info = wsgirequest.POST if submitted is True else wsgirequest.GET
-        args = () if submitted is False else (info,)
-        if (req_id := info.get("req_id")) is not None:
-            return cls.from_request_id(*args, req_id=req_id)
+        if submitted is False:
+            args, parsed = (), None
+        else:
+            args = (info,)
+            parsed = _blank_ldst_hypotheses()
+            for name, checked in wsgirequest.POST.items():
+                if not (
+                    name.endswith("relevant") or name.endswith("critical")
+                ):
+                    continue
+                hyp, quality = name.split("-")
+                parsed[hyp][quality] = True if checked == "on" else False
+        if (req_id := info.get("req_id")) not in (None, ""):
+            return cls.from_request_id(
+                *args, req_id=req_id, ldst_hypotheses=parsed
+            )
         # otherwise simply populate / create blank form
         return cls(*args)
 
@@ -447,24 +475,24 @@ class RequestForm(JunctionForm):
         """
         self._eval_info |= {
             row.ldst_id: _ldst_eval_record(row)
-            for row
-            in self._relations[JuncImageRequestLDST].get('existing', [])
+            for row in self._relations[JuncImageRequestLDST].get(
+                "existing", []
+            )
         }
         return self._eval_info
 
+    # TODO: cut this in a clean way
     def _populate_from_junc_image_request_ldst(self, junc_rows):
-        ldst_hypotheses, critical = [], []
-        for row in junc_rows:
-            ldst_hypotheses.append(row.ldst_id)
-            if row.critical is True:
-                critical.append(row.ldst_id)
-        self.fields["ldst_hypotheses"].initial = ldst_hypotheses
-        self.fields["critical"].choices = [(h, h) for h in ldst_hypotheses]
-        self.fields["critical"].initial = critical
+        pass
 
     # other fields are only needed for outgoing image requests, not for
     # specifying intent metadata for already-taken images
-    required_intent_fields = ["title", "justification", "ldst_hypotheses"]
+    required_intent_fields = [
+        "title",
+        "justification",
+        "ldst_hypotheses",
+        "status",
+    ]
     title = forms.CharField(
         required=True,
         widget=forms.TextInput(
@@ -479,26 +507,6 @@ class RequestForm(JunctionForm):
                 "id": "image-justification",
             }
         ),
-    )
-    ldst_hypotheses = forms.MultipleChoiceField(
-        required=True,
-        widget=forms.SelectMultiple(
-            attrs={
-                "id": "ldst-elements",
-                "value": "",
-                "placeholder": "",
-                "style": "height: 10rem",
-            }
-        ),
-        initial=[],
-        choices=[(id_, id_) for id_ in LDST_IDS],
-    )
-    critical = CarelessMultipleChoiceField(
-        required=False,
-        widget=forms.SelectMultiple(
-            attrs={"id": "ldst-critical", "value": "", "placeholder": ""}
-        ),
-        choices=[],
     )
     status = forms.ChoiceField(
         required=True,
@@ -548,7 +556,7 @@ class RequestForm(JunctionForm):
         ],
     )
     rover_orientation = forms.CharField(
-        widget=forms.TextInput(
+        widget=forms.Textarea(
             {
                 "placeholder": "rover orientation (if relevant)",
                 "id": "rover-orientation",
@@ -661,11 +669,11 @@ class RequestForm(JunctionForm):
     @autosession
     def _construct_ldst_specs(self, session=None):
         """construct JuncImageRequestLDST attrs from form content"""
-        if "ldst_hypotheses" not in self.cleaned_data:
-            return
-        for hyp in self.cleaned_data["ldst_hypotheses"]:
+        for hyp, qualities in self.ldst_hypotheses.items():
+            if qualities['relevant'] is False:
+                continue
             attrs = {
-                "critical": hyp in self.cleaned_data["critical"],
+                "critical": qualities['critical'],
                 "ldst": get_one(LDST, hyp, session=session),
             }
             self.junc_specs[JuncImageRequestLDST].append(attrs)
@@ -703,10 +711,8 @@ class RequestForm(JunctionForm):
         # note that only aftcams/navcams have imaging_mode
         if self.camera_type != "HAZCAM":
             self.hazcams = ("Any",)
-        if self.fields["camera_request"].disabled is True:
-            return
-        request = self.cleaned_data["camera_request"]
-        ct, mode = request.split("_", maxsplit=1)
+        camera_request = self.cleaned_data["camera_request"]
+        ct, mode = camera_request.split("_", maxsplit=1)
         self.camera_type = ct.upper()
         if self.camera_type == "HAZCAM":
             if mode == "any":
@@ -714,7 +720,7 @@ class RequestForm(JunctionForm):
             else:
                 # TODO: change this if we have multiple hazcams
                 self.hazcams = [
-                    vis_instrument_aliases[request.replace("_", " ")]
+                    vis_instrument_aliases[camera_request.replace("_", " ")]
                 ]
         else:
             self.imaging_mode = mode.upper()
@@ -736,13 +742,7 @@ class RequestForm(JunctionForm):
             del self.cleaned_data[fieldname]
         return self.cleaned_data
 
-    ui_only_fields = (
-        "camera_request",
-        "need_360",
-        "supplementary_file",
-        "ldst_hypotheses",
-        "critical",
-    )
+    ui_only_fields = ("camera_request", "need_360", "supplementary_file")
     pk_field = "req_id"
     # this is actually an optional set of integers, but, in form submission,
     # we retain / parse it as a string for UI reasons. TODO, maybe: clean

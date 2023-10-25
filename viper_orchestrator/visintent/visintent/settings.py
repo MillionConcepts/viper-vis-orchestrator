@@ -27,7 +27,7 @@ PROD_SECRET_KEY = get_prod_secret_key()
 SECRET_KEY = TEST_SECRET_KEY if TEST is True else PROD_SECRET_KEY
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# DEBUG = True
+DEBUG = True
 
 # host machine responsibility to not receive unauthorized traffic; we don't know our host name;
 # don't run facing the open internet unless this is changed appropriately --Million Concepts

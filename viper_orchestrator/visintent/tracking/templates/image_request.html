@@ -1,13 +1,12 @@
 {% load static %}
 {% include "layouts/head.html" %}
-<body>
+<div>
 {% include "layouts/nav.html" %}
-
     {% if form.req_id is not None %}
         <h2>editing image request {{ form.req_id }}</h2>
         {% if form.product_ids|length > 0 %}
-            <h4>associated product ids:
-            {% for product_id in form.product_ids %}{{ product_id }} {% endfor %}
+            <h4>associated products:
+            {% for product_id in form.product_ids %}<a href="{{ product_id }}">{{ product_id }}</a> {% endfor %}
             </h4>
         {% endif %}
     {% else %}
@@ -17,8 +16,8 @@
         {{ form.errors }}
     {% endif %}
     <div id='multiple-eval-container' class="multiple-form-container" style="display: flex">
-    {# empty forms used as references by input elements in the table rows #}
-    {% for hyp, _ in form.fields.ldst_hypotheses.choices %}
+    {# empty forms that provide hooks for input elements in eval-table rows #}
+    {% for hyp in form.ldst_hypotheses %}
         <form id="{{ hyp }}-eval-form"
               class="eval-form"
               method="POST"
@@ -26,38 +25,52 @@
               action="/submitevaluation/?req_id={{ form.req_id }}&hyp={{ hyp }}">
         </form>
     {% endfor %}
-    <table id="eval-table" class="eval-table">
+    {% if form.product_ids|length > 0 %}
+    <button id="evaluation-toggle" onClick="toggleEvalTable()"></button>
+    {% endif %}
+    <table id="eval-table" class="eval-table"
+       {% if just_evaluated %}
+       style="display: inherit"
+       {% else %}
+       style="display: none"
+       {% endif %}
+    >
         <thead>
-        <tr><th>hypothesis</th><th>supports?</th><th>notes</th><th>evaluator</th><th></th></tr>
+        <tr><th>hypothesis</th><th>supports?</th><th>notes</th><th>evaluator</th><th>submit</th></tr>
         </thead>
         <tbody>
-        {% for hyp, _ in form.fields.ldst_hypotheses.choices %}
+        {% for hyp in form.ldst_hypotheses %}
             <tr id="{{ hyp }}-eval-target" class="eval-input-row"></tr>
         {% endfor %}
         </tbody>
     </table>
     </div>
-    <form method="POST" action="/submitrequest"
-      enctype="multipart/form-data" style="max-width: 50vw">
+    <form method="POST" action="/submitrequest" enctype="multipart/form-data">
         <label for="hidden-request-id-input"></label>
             <input type="number"
                    style="display: none;"
                    id="hidden-request-id-input"
                    name="req_id"
                    value={{ form.req_id }}>
-    <div class="vertical-form-inner">
-        {% if form.req_id is None %}
-            <div id="status-hider" style="display: none">
-        {% endif %}
+        <div id="form-panel" class="split-flow-container request-container">
+        <div class="vertical-form-inner">
+            {% if form.req_id is not None %}
             <label for={{ form.status.id }}>{{ form.status.label}}</label>
             {{ form.status }}
-        {% if form.req_id is None %}
+            {% endif %}
+        {% for field in form %}
+        {% if field.name == 'justification' or field.name == 'title' %}
+            <div id="{{ field.name }}-field-div" class="{{ field.widget_type }}-field vertical-form-field">
+            <label for="{{ field.id }}">{{ field.label }}</label>
+            {{ field }}
             </div>
         {% endif %}
+        {% endfor %}
         {% for field in form %}
+        {% if field.name == 'status' or field.name == 'justification' or field.name == 'title' %}
+        {% else %}
         <div id="{{ field.name }}-field-div"
              class="{{ field.widget_type }}-field vertical-form-field">
-        {% if field.name != 'status' %}
             <label
                 {% if field.name in form.slice_fields %}class="pano-only slice-field"
                 {% elif field.name in form.pano_only_fields %}class="pano-only"
@@ -69,18 +82,40 @@
                 {% endif %}
             </label>
             {{field}}
-        {% endif %}
         </div>
+        {% endif %}
         {% endfor %}
-    </div>
-    <div style="margin-top: 1rem;">
-        <button type="submit" name="submitrequest" formaction="/submitrequest">submit</button>
-    </div>
-</form>
+        <div>
+            <button type="submit" name="submitrequest" formaction="/submitrequest">
+                submit request
+            </button>
+        </div>
+        </div>
+        {# populated by js #}
+        <div id="ldst-field-div" class="vertical-form-field two-column-checkbox">
+            <label style="margin-bottom: 1rem; margin-top: 0.5rem">ldst hypotheses</label>
+        </div>
+        </div>
+    </form>
+</div>
 <p id="eval_json" style="display: none">{{ eval_json }}</p>
 <script src="{% static 'js/visibility.js' %}"></script>
 <script>
+    /* shared DOM object references */
     const evaluations = JSON.parse(gid("eval_json").innerHTML)
+    const toggleButton = gid('evaluation-toggle')
+    const criticalChecks = document.getElementsByClassName('critical-check')
+    const cameraRequest = document.getElementById('camera-request');
+    const needs360 = document.getElementById('need-360');
+    const panoOnlyInputs = document.getElementsByClassName('pano-only');
+    const sliceInputs = document.getElementsByClassName('slice-field');
+    const evalTable = gid('eval-table');
+
+    const toggleEvalTable = function() {
+        const isVisible = evalTable.style.display !== "none"
+        evalTable.style.display = isVisible ? "none" : "table"
+        toggleButton.innerText = isVisible ? "show evaluation" : "hide evaluation"
+    }
     /**
      * @param {string} identifier
      * @param {string} name
@@ -100,19 +135,34 @@
      * @param {string} identifier
      * @param {string} name
      * @param {boolean} checked
-     * @param {?string|HTMLElement}opposite
+     * @param {?string|HTMLElement} paired
+     * @param {boolean} nameID
+     * @param {boolean} strict
      * @returns {HTMLElement}
      */
-    const checkFactory = function(identifier, name, checked=false, opposite=null) {
+    const checkFactory = function(
+        identifier, name, checked=false, paired=null, nameID=false, strict=false
+    ) {
         const checkbox = document.createElement("input")
         checkbox.type = "checkbox"
         checkbox.checked = checked
         checkbox.id = `${identifier}-${name}-check`
+        checkbox.name = nameID ? `${identifier}-${name}` : name
         checkbox.classList.add(`${name}-check`)
-        if (typeof (opposite) === "string") {
-            checkbox.onclick = () => turnOff(gid(`${identifier}-${opposite}-check`))
-        } else if (opposite instanceof Element) {
-            checkbox.onclick = () => turnOff(opposite)
+        let target = null
+        if (typeof(paired) === "string") {
+            target = `${identifier}-${paired}-check`
+        }
+        else {
+            target = paired
+        }
+        if (paired !== null) {
+            if (strict === false) {
+                checkbox.onclick = () => unCheck(target)
+            }
+            else {
+                checkbox.onclick = () => disableCheck(target, checkbox)
+            }
         }
         return checkbox
     }
@@ -124,9 +174,9 @@
     const evalRowFactory = function(hyp) {
         const eval = evaluations[hyp]
         const status = eval['evaluation']
-        const hypCell = W(W(hyp, "p"), "td", "hyp-eval-cell")
-        const goodCheck = checkFactory(hyp, "good", status==='False', "bad")
-        const badCheck = checkFactory(hyp, "bad", status==='True', "good")
+        const hypCell = W(hyp, "p", "hyp-eval-cell")
+        const goodCheck = checkFactory(hyp, "good", status===true, "bad")
+        const badCheck = checkFactory(hyp, "bad", status===true, "good")
         const goodBad = W(
             [
                 W(L(goodCheck, "YES"), "div"),
@@ -141,7 +191,7 @@
         const evaluator = textAreaFactory(
             hyp, 'evaluator', eval['evaluator'], 'Enter your name.'
         )
-        const button = W("enter", "button")
+        const button = W("evaluate", "button")
         button.id = `${hyp}-submit-button`
         button.type = "submit"
         const cells = [
@@ -150,50 +200,30 @@
         addForm(`${hyp}-eval-form`, ...cells)
         return cells
     }
+    const populateHypotheses = function(_event) {
+        const field = gid("ldst-field-div")
+        Object.entries(evaluations).forEach(function(entry){
+            const hyp = entry[0]
+            const eval = entry[1]
+            const relevant = eval['relevant']
+            const critical = eval['critical']
+            const ldstCheck = checkFactory(
+                hyp, 'relevant', relevant===true, "critical", true, true
+            )
+            const critCheck = checkFactory(
+                hyp, 'critical', critical===true, null, true
+            )
+            critCheck.disabled = !relevant
+            const row = W([...L(ldstCheck, hyp), ...L(critCheck, "critical?")], "div")
+            field.appendChild(row)
+        })
+    }
     const populateEvalRows = function(_event) {
         Object.keys(evaluations).forEach(function(hyp) {
             const node = gid(`${hyp}-eval-target`)
             evalRowFactory(hyp).forEach(cell => node.appendChild(cell))
+            node.style.display = evaluations[hyp].critical === true ? 'table-row' : 'none'
         })
-    }
-    const ldstSelect = document.getElementById('ldst-elements');
-    const ldstCritical = document.getElementById('ldst-critical');
-    const ldstOptions = ldstSelect.options
-    const ldstCriticalOptions = ldstCritical.options
-    const cameraRequest = document.getElementById('camera-request');
-    const needs360 = document.getElementById('need-360');
-    const panoOnlyInputs = document.getElementsByClassName('pano-only');
-    const sliceInputs = document.getElementsByClassName('slice-field');
-    /**
-     * @param {HTMLOptionElement} option
-     * @param {HTMLOptionsCollection} options
-     */
-    const getEquivalentOption = function(option, options) {
-        return Object.values(options).find(function(opt) {
-            return opt.text === option.text && opt.value === option.value
-        }) || null;
-    }
-    /**
-     * @param {HTMLOptionsCollection} source
-     * @param {HTMLOptionsCollection} target
-     */
-    const updateOptionsFromSelected = function(source, target) {
-        const new_options = [];
-        Object.values(source).forEach(function(option) {
-            console.log(option.value)
-            let existing = getEquivalentOption(option, target);
-            if (option.selected && (existing === null)) {
-                new_options.push(new Option(option.text, option.value))
-            }
-            else if (option.selected && (existing !== null)) {
-                new_options.push(existing)
-            }
-        });
-        Object.values(target).forEach(o => target.remove(o))
-        new_options.sort().forEach(o => target.add(o))
-    }
-    const updateCriticalOptions = function() {
-        return updateOptionsFromSelected(ldstOptions, ldstCriticalOptions)
     }
     const togglePanoVisibility = function() {
         const display = (cameraRequest.value === 'navcam_panorama') ? 'block' : 'none';
@@ -205,12 +235,75 @@
         const display = pano && slice ? 'block' : 'none'
         Array.from(sliceInputs).forEach((input) => {input.style.display = display})
     };
-    ldstSelect.addEventListener('change', updateCriticalOptions);
+    /**
+     * @param {Event} event
+     */
+    const updateEvalVisibility = function(event) {
+        const hyp = event.explicitOriginalTarget.value
+        const selected = event.explicitOriginalTarget.selected
+        const row = gid(`${hyp}-eval-target`)
+        const rowVisible = row.style.display !== "none"
+        if (event.target === ldstCritical) {
+            if (selected === true) {
+                row.classList.add('critical-row')
+            }
+            else {
+                row.classList.remove('critical-row')
+            }
+        }
+        /* it's difficult to do this with just CSS because we
+        make the critical options fully disappear when hypotheses are removed
+        from primary select, hence the remainder of this function */
+        if (rowVisible && ~selected) {
+            row.style.display = "none"
+        }
+        else if (~rowVisible && selected && row.classList.contains('critical-row')) {
+            row.style.display = "table-row"
+        }
+    }
+
+    /**
+     * @param {HTMLElement} row
+     * @returns {function(Event|Element): void}
+     */
+    const rowToggler = function(row) {
+        return function(obj) {
+            let source
+            if (obj instanceof Event) {
+                source = obj.target
+            }
+            else {
+                source = obj
+            }
+            row.style.display = source.checked === true ? "table-row" : "none"
+        }
+    }
+    const associateCriticalChecks = function(_event) {
+        Object.values(criticalChecks).forEach(function(checkbox) {
+            const hyp = checkbox.id.slice(0, 5)
+            const row = gid(`${hyp}-eval-target`)
+            const toggler = rowToggler(row)
+            checkbox.addEventListener('change', toggler)
+            toggler(checkbox)
+        })
+    }
+    const prepEvalToggleButton = function(_event) {
+        if (evalTable.style.display === 'none') {
+            toggleButton.innerText = "show evaluation"
+        }
+        else {
+            toggleButton.innerText = "hide evaluation"
+        }
+    }
+
     cameraRequest.addEventListener('change', togglePanoVisibility);
     needs360.addEventListener('change', toggleSliceVisibility);
     document.addEventListener("DOMContentLoaded", togglePanoVisibility)
     document.addEventListener("DOMContentLoaded", toggleSliceVisibility)
     document.addEventListener("DOMContentLoaded", populateEvalRows)
+    document.addEventListener("DOMContentLoaded", populateHypotheses)
+    document.addEventListener("DOMContentLoaded", associateCriticalChecks)
+    document.addEventListener("DOMContentLoaded", prepEvalToggleButton)
 </script>
 </body>
 </html>

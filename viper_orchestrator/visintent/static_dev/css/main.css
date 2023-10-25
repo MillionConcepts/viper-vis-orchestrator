@@ -65,6 +65,10 @@ select option:checked {
     box-shadow: 0 0 1rem 1rem var(--royal-violet) inset;
     color: var(--silver);
 }
+input[type=checkbox] {
+    accent-color: var(--royal-violet);
+}
+
 h1, h2, h3, h4, .metadata-title {
     font-family: 'Titillium Web', sans-serif;
 }
@@ -136,9 +140,6 @@ aside {
     display: flex;
     flex-direction: column;
 }
-.vertical-form-inner {
-    margin-top: 1rem;
-}
 .vertical-form-inner .checkbox-field, .number-field {
     width: fit-content;
     flex-direction: row;
@@ -183,10 +184,10 @@ aside {
     height: 1.7rem;
     width: 1.7rem;
 }
-.good-check {
+.good-bad-field .good-check {
     accent-color: var(--phosphor-green);
 }
-.bad-check {
+.good-bad-field .bad-check {
     accent-color: var(--old-led)
 }
 .verification-form-inner .checkbox-field input:checked {
@@ -210,32 +211,41 @@ aside {
 .eval-table {
     border-collapse: separate;
     border-spacing: 0 1rem;
-    width: fit-content;
+    width: 75vw;
 }
 .eval-table td {
     border-bottom: 1px solid var(--static-gray);
     padding-bottom: 0.5rem;
     text-align: center;
-
 }
 .eval-table textarea {
     min-height: 6rem;
-    min-width: 12rem;
+    min-width: 15rem;
     background-color: var(--astronomical-twilight);
     color: var(--silver);
     border: none;
 }
+#evaluation-toggle {
+    font-size: 18pt;
+    width: fit-content;
+    height: 100%;
+    background-color: var(--astronomical-twilight);
+    color: var(--phosphor-green);
+    border: 1px solid var(--ambiguous-flare);
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+}
 .eval-table .evaluation_notes-text {
     width: 100%;
-    min-width: 25rem;
+    min-width: 25vw;
 }
 .eval-table button {
     font-family: "Fira Mono", monospace;
     background-color: var(--astronomical-twilight);
-    color: var(--silver);
-    border: none;
-    font-size: 21pt;
-
+    color: var(--phosphor-green);
+    border: 1px solid var(--ambiguous-flare);
+    font-size: 2.5vw;
+    height: 4rem;
 }
 .eval-input-row {
     border-bottom: 1px solid var(--silver);
@@ -247,6 +257,7 @@ aside {
     display: flex;
     flex-direction: column;
     justify-content: space-evenly;
+    min-width: 6rem;
 }
 /*.eval-form-inner {*/
 /*    display: flex;*/
@@ -313,6 +324,54 @@ aside {
     font-size: 18pt;
     text-align: center;
 }
+.request-container input, .request-container select,
+.request-container textarea {
+    background-color: var(--astronomical-twilight);
+    color: var(--silver);
+    border: 1px solid var(--silver)
+}
+.request-container:disabled, .request-container select:disabled,
+.request-container textarea:disabled, .request-container input:disabled {
+    color: #ada0a2;
+    border: 1px dashed var(--static-gray)
+}
+.request-container button {
+    font-family: "Fira Mono", monospace;
+    background-color: var(--static-gray);
+    color: var(--ambiguous-flare);
+    border: 1px solid var(--silver);
+    font-size: 32pt;
+    margin-top: 2rem;
+}
+.two-column-checkbox {
+    margin-top: 1rem;
+    max-height: 60vh;
+    min-height: 30rem;
+    overflow: scroll;
+    background-color: var(--astronomical-twilight);
+    font-family: "Fira Mono", monospace;
+    font-size: 16pt;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    min-width: 25rem;
+    flex-shrink: 0;
+    margin-left: 5%;
+}
+.two-column-checkbox div {
+    margin-bottom: 0.5rem;
+}
+.two-column-checkbox label {
+    margin-left: 1.5rem;
+    vertical-align: middle;
+}
+.two-column-checkbox input {
+    margin-right: 3rem;
+    margin-top: 0;
+    margin-bottom: 0;
+    height: 1.8rem;
+    width: 1.8rem;
+    vertical-align: middle;
+}
 .toggle-table {
     display: none;
 }
@@ -359,9 +418,41 @@ aside {
     .verification-form-inner .vertical-form-field textarea {
         max-height:5rem;
     }
+
     .flex-panel img {
         max-height: 50vh;
         width: auto;
+    }
+}
+@media (max-width: 64rem) {
+    .split-flow-container.request-container {
+         flex-direction: row;
+    }
+    .two-column-checkbox {
+        min-width: fit-content;
+        width: 25%;
+        margin-left: 2%
+    }
+    .two-column-checkbox label {
+        margin-left: 0.5rem;
+        vertical-align: middle;
+    }
+    .two-column-checkbox input {
+        margin-right: 0.5rem;
+        margin-top: 0;
+        margin-bottom: 0;
+        height: 1.8rem;
+        width: 1.8rem;
+        vertical-align: middle;
+    }
+}
+@media (min-width: 64rem) {
+    .split-flow-container.request-container {
+         flex-direction: row;
+    }
+    .request-container textarea {
+        min-width: 35rem;
+        max-height: 8rem;
     }
 }
 .metadata-view-title {

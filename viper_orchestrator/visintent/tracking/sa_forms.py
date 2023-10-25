@@ -48,6 +48,9 @@ class SAForm(forms.Form):
         ):
             return self._row
         data = {k: v for k, v in self.cleaned_data.items()}
+        # TODO: a convenient way to turn off extra_attrs associated with
+        #  inactive fields (e.g., luminaires for a satisfied image request)
+        #  -- this is basically to prevent weird UI bugs from breaking things
         data |= {attr: getattr(self, attr) for attr in self.extra_attrs}
         try:
             if hasattr(self, self.pk_field):
