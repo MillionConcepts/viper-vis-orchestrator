@@ -160,6 +160,7 @@ def imagerequest(request: WSGIRequest) -> HttpResponse:
                 "filename": filename,
                 "file_url": file_url,
                 "pagetitle": "Image Request",
+                "eval_json": json.dumps(form.eval_info)
             },
         )
     except BadURLError as bue:
@@ -181,6 +182,11 @@ def submitverification(
         )
     form.commit(session=session)
     return imageview(request, rec_id=request.POST['rec_id'])
+
+def submitevaluation(
+    request: WSGIRequest, session: Optional[Session] = None
+) -> DjangoResponseType:
+    a = 1
 
 
 @never_cache

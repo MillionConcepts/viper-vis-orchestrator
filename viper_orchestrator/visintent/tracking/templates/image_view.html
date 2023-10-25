@@ -30,7 +30,7 @@
               style="display:none;">
               {% endif %}
         <h3 style="font-family:'Fira Mono',monospace; font-size:28px">VIS verification</h3>
-        <div id='verification-form-container' class="vertical-form-container verification-form-container">
+        <div id='verification-form-container' class="vertical-form-inner verification-form-inner">
         {% if verification_form.errors %}
             {{ verification_form.errors }}
         {% endif %}
@@ -223,9 +223,6 @@
         evalA.textContent = evaluationStyle['a-text']
         evalA.href = evaluationStyle['a-href']
         evalP.innerHTML = `${evaluationStyle['p-text']} ${evalP.innerHTML}`
-    }
-    const turnOff = function(element) {
-        element.checked = false
     }
 
     document.addEventListener("DOMContentLoaded", styleVerificationStatus)

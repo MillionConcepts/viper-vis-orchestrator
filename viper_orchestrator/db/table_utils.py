@@ -5,6 +5,7 @@ from typing import Collection, Union, Any, Optional, TYPE_CHECKING
 from sqlalchemy import select, inspect
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import Session, DeclarativeBase
+from sqlalchemy.orm.decl_api import DeclarativeAttributeIntercept
 
 from viper_orchestrator.db import OSession
 from viper_orchestrator.db.session import autosession
@@ -26,6 +27,8 @@ def collstring(coll: Collection) -> str:
 
 def pk(obj: Union[type[MappedRow], MappedRow]) -> str:
     """get the name of a SQLAlchemy table's first primary key"""
+    if not isinstance(obj, DeclarativeAttributeIntercept):
+        return inspect(type(obj)).primary_key[0].name
     return inspect(obj).primary_key[0].name
 
 

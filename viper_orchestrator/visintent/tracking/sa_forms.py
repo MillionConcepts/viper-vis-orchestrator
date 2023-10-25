@@ -146,7 +146,9 @@ class JunctionForm(SAForm):
 
     def _build_commit(self, table, *, session):
         rel = self._relations[table]
-        if not all(object_session(r) is session for r in rel['existing']):
+        if not all(
+            object_session(r) is session for r in rel.get('existing', [])
+        ):
             rel['existing'] = self.get_relations(table, session=session)
         specs = {i: s for i, s in enumerate(self.junc_specs[table])}
         rules = self.junc_rules[table]
@@ -154,13 +156,16 @@ class JunctionForm(SAForm):
         for junc_row in adict['existing']:
             matches = []
             for i, s in specs.items():
-                if (row := s.get('junc_pivot')) is None:
+                if (row := s.get(rules['junc_instance_spec_key'])) is None:
                     continue
-                pk_field = pk(row)
-                if getattr(row, pk_field) == getattr(junc_row, pk_field):
-                    matches.append(s)
-            # mark table entries not specified in this form for deletion
+                row_pk = getattr(row, pk(row))
+                if row_pk == getattr(junc_row, rules['junc_pivot']):
+                    matches.append((i, s))
+            # mark table entries not specified in this form for deletion,
+            # unless the form is only used for updates of this junc row
             if len(matches) == 0:
+                if rules.get('update_only') is True:
+                    continue
                 adict['missing'].append(junc_row)
             elif len(matches) > 1:
                 raise InvalidRequestError(
@@ -175,7 +180,13 @@ class JunctionForm(SAForm):
                 specs.pop(matches[0][0])
         # leftover specs are new table entries
         if len(specs) > 0:
-            # shouldn't need to define self_attr on existing junc table rows
+            # for forms that are only used to update existing table entries
+            if rules.get('update_only') is True:
+                raise InvalidRequestError(
+                    f"{self.__class__.__name__} cannot be used to construct "
+                    f"new table entries."
+                )
+            # note: shouldn't need to set self_attr on existing junc rows
             row = self.get_row(session)
             for s in specs.values():
                 junc_row = table()

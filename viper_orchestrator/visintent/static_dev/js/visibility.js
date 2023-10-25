@@ -59,3 +59,7 @@ const toggleVisibility = function(id, visible= null, style = "inherit") {
         throw `invalid visibility directive ${visible}`
     }
 }
+
+const turnOff = function(element) {
+    element.checked = false
+}

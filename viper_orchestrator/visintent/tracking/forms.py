@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from dustgoggles.structures import listify
 from sqlalchemy import select
 from sqlalchemy.exc import InvalidRequestError, NoResultFound
+from sqlalchemy.orm import Session
 
 # noinspection PyUnresolvedReferences
 from viper_orchestrator.config import REQUEST_FILE_ROOT
@@ -31,8 +32,24 @@ from vipersci.vis.db.ldst import LDST
 from vipersci.vis.db.light_records import luminaire_names
 
 
+class CarelessMultipleChoiceField(forms.MultipleChoiceField):
+
+    """
+    aggressively skip Django's default choice validation.
+    intended when we want to modify a field's options dynamically and don't
+    want unnecessary handholding interfering with our modifications.
+    """
+
+    def __init__(self, *, choices, **kwargs):
+        super().__init__(choices=choices, **kwargs)
+        self.default_validators = []
+
+    def validate(self, value):
+        pass
+
+
 @autosession
-def initialize_fields(session=None):
+def initialize_options(session=None):
     hypotheses = session.scalars(select(LDST)).all()
     ldst_ids = [hypothesis.id for hypothesis in hypotheses]
     image_tags = session.scalars(select(ImageTag)).all()
@@ -40,9 +57,20 @@ def initialize_fields(session=None):
     return {"ldst_ids": ldst_ids, "tags": tags}
 
 
-FIELDS = initialize_fields()
-LDST_IDS = FIELDS["ldst_ids"]
-TAG_NAMES = FIELDS["tags"]
+# on import, construct sets of form options representing
+#  sets of legal associated objects for many-to-many relations
+OPTIONS = initialize_options()
+LDST_IDS = OPTIONS["ldst_ids"]
+TAG_NAMES = OPTIONS["tags"]
+LDST_EVAL_FIELDS = ('critical', 'evaluation', 'evaluator', 'evaluation_notes')
+
+
+def _blank_eval_info():
+    return {hyp: {f: None for f in LDST_EVAL_FIELDS} for hyp in LDST_IDS}
+
+
+def _ldst_eval_record(row: JuncImageRequestLDST):
+    return {f: getattr(row, f) for f in LDST_EVAL_FIELDS}
 
 
 def _db_init_trywrap(func):
@@ -67,24 +95,7 @@ def _db_init_trywrap(func):
     return trywrapped
 
 
-class CarelessMultipleChoiceField(forms.MultipleChoiceField):
-
-    """
-    aggressively skip Django's default choice validation.
-    intended when we want to modify a field's options dynamically and don't
-    want unnecessary handholding interfering with our modifications.
-    """
-
-    def __init__(self, *, choices, **kwargs):
-        super().__init__(choices=choices, **kwargs)
-        self.default_validators = []
-
-    def validate(self, value):
-        pass
-
-
 class AssignRecordForm(forms.Form):
-
     """very simple form for associating an ImageRecord with an ImageRequest."""
 
     @autosession
@@ -151,32 +162,45 @@ def ldst_junc_rules(self):
     return {
         "target": LDST,
         "pivot": ("image_request_id", "req_id"),
-        "junc_pivot": "ldst",
+        "junc_pivot": "ldst_id",
+        "junc_instance_spec_key": "ldst",
         "self_attr": "image_request",
         "form_field": "ldst_hypotheses",
-        "populator": getattr(self, "_populate_from_junc_image_request_ldst")
+        "populator": getattr(self, "_populate_from_junc_image_request_ldst"),
     }
 
 
 class EvaluationForm(JunctionForm):
-    """form for science evaluation of image requests."""
+    """
+    form for science evaluation of image requests. this is _only_ used on the
+    backend to help manage relations. we dynamically construct HTML forms
+    whose values will be used to construct these objects on the frontend,
+    populating those forms from the DOM representation of a RequestForm.
+    """
 
     @autosession
     def __init__(
         self,
         *args,
+        ldst_id: str,
         image_request: Optional[ImageRequest] = None,
         req_id: Optional[Union[int, str]] = None,
-        session=None,
+        session: Optional[Session] = None,
         **kwargs,
     ):
+        if ldst_id not in LDST_IDS:
+            raise ValueError(f"{ldst_id} is not a known LDST hypothesis.")
         super().__init__(*args, **kwargs)
-        self._initialize_from_db(image_request, req_id, session)
+        self._initialize_from_db(image_request, req_id, session=session)
         self._populate_junc_fields()
-        a = 1
 
     @_db_init_trywrap
-    def _initialize_from_db(self, image_request, req_id, session):
+    def _initialize_from_db(
+        self,
+        image_request: Optional[ImageRequest],
+        req_id: Optional[Union[str, int]],
+        session: Optional[Session],
+    ):
         if image_request is None and req_id is None:
             raise TypeError(
                 "Cannot construct this form without an ImageRequest id "
@@ -190,9 +214,35 @@ class EvaluationForm(JunctionForm):
             )
         self.req_id = self.image_request.id
 
+    good = forms.BooleanField(required=False)
+    bad = forms.BooleanField(required=False)
+    evaluation_notes = forms.CharField(
+        widget=forms.Textarea(
+            attrs={
+                "class": "evaluation-notes-text",
+                "placeholder": "Enter any notes.",
+            }
+        ),
+        required=False,
+    )
+    evaluator = forms.CharField(
+        widget=forms.Textarea(
+            attrs={
+                "class": "evaluator-text",
+                "placeholder": "Enter your name to verify.",
+            }
+        )
+    )
+
     @property
     def junc_rules(self):
-        return {JuncImageRequestLDST: ldst_junc_rules(self)}
+        return {
+            "target": LDST,
+            "pivot": ("image_request_id", "req_id"),
+            "junc_pivot": "ldst_id",
+            "junc_instance_spec_key": "ldst",
+            "update_only": True,
+        }
 
 
 class VerificationForm(JunctionForm):
@@ -238,8 +288,14 @@ class VerificationForm(JunctionForm):
                 ImageRecord, pid, pivot="_pid", session=session
             )
 
-    good = forms.BooleanField(required=False)
-    bad = forms.BooleanField(required=False)
+    good = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'good-check'})
+    )
+    bad = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'bad-check'})
+    )
     image_tags = forms.MultipleChoiceField(
         widget=forms.SelectMultiple(
             attrs={"id": "image-tags", "value": "", "placeholder": ""}
@@ -266,7 +322,8 @@ class VerificationForm(JunctionForm):
                 "target": ImageTag,
                 "populator": self._populate_from_junc_image_record_tag,
                 "pivot": ("image_record_id", "rec_id"),
-                "junc_pivot": "image_tag",
+                "junc_pivot": "image_tag_id",
+                "junc_instance_spec_key": "image_tag",
                 "self_attr": "image_record",
                 "form_field": "image_tags",
             }
@@ -322,6 +379,7 @@ class RequestForm(JunctionForm):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        self._eval_info = _blank_eval_info()
         self.image_request = image_request
         if self.image_request is not None:
             self.product_ids = {
@@ -336,8 +394,8 @@ class RequestForm(JunctionForm):
                     field.initial = self._image_request_to_camera_request(
                         image_request
                     )
-                elif field_name == 'luminaires':
-                    field.initial = image_request.luminaires.split(',')
+                elif field_name == "luminaires":
+                    field.initial = image_request.luminaires.split(",")
                 elif field_name in dir(image_request):
                     field.initial = getattr(image_request, field_name)
             self.req_id = image_request.id
@@ -381,8 +439,20 @@ class RequestForm(JunctionForm):
         # otherwise simply populate / create blank form
         return cls(*args)
 
+    @property
+    def eval_info(self):
+        """
+        dictionary of evaluation information. intended primarily to
+        be sent to frontend as JSON to facilitate dynamic form creation.
+        """
+        self._eval_info |= {
+            row.ldst_id: _ldst_eval_record(row)
+            for row
+            in self._relations[JuncImageRequestLDST].get('existing', [])
+        }
+        return self._eval_info
+
     def _populate_from_junc_image_request_ldst(self, junc_rows):
-        """shared populator for forms that access JuncImageRequestLDST"""
         ldst_hypotheses, critical = [], []
         for row in junc_rows:
             ldst_hypotheses.append(row.ldst_id)
@@ -430,14 +500,12 @@ class RequestForm(JunctionForm):
         ),
         choices=[],
     )
-
     status = forms.ChoiceField(
         required=True,
         widget=forms.Select(attrs={"id": "status", "value": "WORKING"}),
         choices=[(e.name, e.name) for e in list(Status)],
         initial="WORKING",
     )
-
     users = forms.CharField(
         required=True,
         widget=forms.TextInput(
@@ -633,8 +701,8 @@ class RequestForm(JunctionForm):
         UI.
         """
         # note that only aftcams/navcams have imaging_mode
-        if self.camera_type != 'HAZCAM':
-            self.hazcams = ('Any',)
+        if self.camera_type != "HAZCAM":
+            self.hazcams = ("Any",)
         if self.fields["camera_request"].disabled is True:
             return
         request = self.cleaned_data["camera_request"]

@@ -2,18 +2,13 @@
 {% include "layouts/head.html" %}
 <body>
 {% include "layouts/nav.html" %}
-<form method="POST" action="/submitrequest"
-  enctype="multipart/form-data" style="max-width: 50vw">
+
     {% if form.req_id is not None %}
         <h2>editing image request {{ form.req_id }}</h2>
-{#        <p class="placeholder-text">placeholder: a way to delete me</p>#}
-        <label for="hidden-request-id-input">
-            <input type="number" style="display: none;" id="hidden-request-id-input" name="req_id" value={{ form.req_id }}>
-        </label>
         {% if form.product_ids|length > 0 %}
-            <h4>associated product ids:</h4>
-            {% for product_id in form.product_ids %}{{ product_id }}
-            {% endfor %}
+            <h4>associated product ids:
+            {% for product_id in form.product_ids %}{{ product_id }} {% endfor %}
+            </h4>
         {% endif %}
     {% else %}
         <h2>new image request</h2>
@@ -21,7 +16,36 @@
     {% if form.errors %}
         {{ form.errors }}
     {% endif %}
-    <div class="vertical-form-container">
+    <div id='multiple-eval-container' class="multiple-form-container" style="display: flex">
+    {# empty forms used as references by input elements in the table rows #}
+    {% for hyp, _ in form.fields.ldst_hypotheses.choices %}
+        <form id="{{ hyp }}-eval-form"
+              class="eval-form"
+              method="POST"
+              enctype="multipart/form-data"
+              action="/submitevaluation/?req_id={{ form.req_id }}&hyp={{ hyp }}">
+        </form>
+    {% endfor %}
+    <table id="eval-table" class="eval-table">
+        <thead>
+        <tr><th>hypothesis</th><th>supports?</th><th>notes</th><th>evaluator</th><th></th></tr>
+        </thead>
+        <tbody>
+        {% for hyp, _ in form.fields.ldst_hypotheses.choices %}
+            <tr id="{{ hyp }}-eval-target" class="eval-input-row"></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <form method="POST" action="/submitrequest"
+      enctype="multipart/form-data" style="max-width: 50vw">
+        <label for="hidden-request-id-input"></label>
+            <input type="number"
+                   style="display: none;"
+                   id="hidden-request-id-input"
+                   name="req_id"
+                   value={{ form.req_id }}>
+    <div class="vertical-form-inner">
         {% if form.req_id is None %}
             <div id="status-hider" style="display: none">
         {% endif %}
@@ -53,10 +77,85 @@
         <button type="submit" name="submitrequest" formaction="/submitrequest">submit</button>
     </div>
 </form>
-<div id="evaluation">
-    <h3>evaluation</h3>
-</div>
+<p id="eval_json" style="display: none">{{ eval_json }}</p>
+<script src="{% static 'js/visibility.js' %}"></script>
 <script>
+    const evaluations = JSON.parse(gid("eval_json").innerHTML)
+    /**
+     * @param {string} identifier
+     * @param {string} name
+     * @param {?string} text
+     * @param {?string} placeholder
+     * @returns {HTMLElement}
+     */
+    const textAreaFactory = function(identifier, name, text=null, placeholder=null) {
+        const textArea = document.createElement("textarea")
+        textArea.innerText = text === null ? "" : text
+        textArea.placeholder = placeholder === null ? "" : placeholder
+        textArea.classList.add(`${name}-text`)
+        textArea.id = `${identifier}-notes`
+        return textArea
+    }
+    /**
+     * @param {string} identifier
+     * @param {string} name
+     * @param {boolean} checked
+     * @param {?string|HTMLElement}opposite
+     * @returns {HTMLElement}
+     */
+    const checkFactory = function(identifier, name, checked=false, opposite=null) {
+        const checkbox = document.createElement("input")
+        checkbox.type = "checkbox"
+        checkbox.checked = checked
+        checkbox.id = `${identifier}-${name}-check`
+        checkbox.classList.add(`${name}-check`)
+        if (typeof (opposite) === "string") {
+            checkbox.onclick = () => turnOff(gid(`${identifier}-${opposite}-check`))
+        } else if (opposite instanceof Element) {
+            checkbox.onclick = () => turnOff(opposite)
+        }
+        return checkbox
+    }
+
+    /**
+     * @param {string} hyp
+     * @returns HTMLElement[]
+    */
+    const evalRowFactory = function(hyp) {
+        const eval = evaluations[hyp]
+        const status = eval['evaluation']
+        const hypCell = W(W(hyp, "p"), "td", "hyp-eval-cell")
+        const goodCheck = checkFactory(hyp, "good", status==='False', "bad")
+        const badCheck = checkFactory(hyp, "bad", status==='True', "good")
+        const goodBad = W(
+            [
+                W(L(goodCheck, "YES"), "div"),
+                W(L(badCheck, "NO"), "div")
+            ],
+            "div",
+            "good-bad-field"
+        )
+        const notes = textAreaFactory(
+            hyp, "evaluation_notes",  eval['evaluation_notes'], 'Enter any notes.'
+        )
+        const evaluator = textAreaFactory(
+            hyp, 'evaluator', eval['evaluator'], 'Enter your name.'
+        )
+        const button = W("enter", "button")
+        button.id = `${hyp}-submit-button`
+        button.type = "submit"
+        const cells = [
+            hypCell, goodBad, L(notes), L(evaluator), L(button)
+        ].map(e => W(e, "td"))
+        addForm(`${hyp}-eval-form`, ...cells)
+        return cells
+    }
+    const populateEvalRows = function(_event) {
+        Object.keys(evaluations).forEach(function(hyp) {
+            const node = gid(`${hyp}-eval-target`)
+            evalRowFactory(hyp).forEach(cell => node.appendChild(cell))
+        })
+    }
     const ldstSelect = document.getElementById('ldst-elements');
     const ldstCritical = document.getElementById('ldst-critical');
     const ldstOptions = ldstSelect.options
@@ -111,6 +210,7 @@
     needs360.addEventListener('change', toggleSliceVisibility);
     document.addEventListener("DOMContentLoaded", togglePanoVisibility)
     document.addEventListener("DOMContentLoaded", toggleSliceVisibility)
+    document.addEventListener("DOMContentLoaded", populateEvalRows)
 </script>
 </body>
 </html>

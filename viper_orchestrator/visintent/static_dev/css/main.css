@@ -131,68 +131,130 @@ aside {
 .metadata-header {
     margin-top:0;
 }
-.vertical-form-container, .vertical-form-field, .pl-table-container,
+.vertical-form-inner, .vertical-form-field, .pl-table-container,
 .review-container {
     display: flex;
     flex-direction: column;
 }
-.vertical-form-container {
+.vertical-form-inner {
     margin-top: 1rem;
 }
-.vertical-form-container .checkbox-field, .number-field {
+.vertical-form-inner .checkbox-field, .number-field {
     width: fit-content;
     flex-direction: row;
 }
-.vertical-form-container .checkbox-field, .number-field label {
+.vertical-form-inner .checkbox-field, .number-field label {
     margin-bottom: 0.25rem;
     margin-top: 0.25rem;
     margin-right: 0.5rem;
     padding: 0;
 }
-.vertical-form-container .number-field input {
+.vertical-form-inner .number-field input {
     max-width: 2.8rem;
     max-height: 0.9rem;
     margin-top: 0.4rem
     /*vertical-align: center;*/
 }
-.verification-form-container {
+.verification-form-inner {
     flex-direction: column;
     max-width: 25vw;
     border-top: 1px solid var(--slate);
     padding-top: 1rem;
 }
-.verification-form-container .vertical-form-field textarea,
-.verification-form-container .vertical-form-field select{
+.verification-form-inner .vertical-form-field textarea,
+.verification-form-inner .vertical-form-field select{
     margin-bottom: 1rem;
 }
-.verification-form-container .vertical-form-field label {
+.verification-form-inner .vertical-form-field label {
     font-size:20px;
     margin-bottom:0.3rem;
 }
-.verification-form-container .good-bad-field {
+.good-bad-field {
     display: flex;
-    text-align: left;
     max-width: fit-content;
+    flex-flow: row;
 }
-
-.verification-form-container .good-bad-field label {
+.good-bad-field label {
     font-size: 30px;
-    margin-right:0.25rem;
+    margin-right: 0.25rem;
 }
-.verification-form-container .good-bad-field #id_good {
+.good-bad-field input {
+    float: right;
     height: 1.7rem;
     width: 1.7rem;
-    accent-color: var(--phosphor-green)
 }
-.verification-form-container .good-bad-field #id_bad {
-    height: 1.7rem;
-    width: 1.7rem;
+.good-check {
+    accent-color: var(--phosphor-green);
+}
+.bad-check {
     accent-color: var(--old-led)
 }
-.verification-form-container .checkbox-field input:checked {
+.verification-form-inner .checkbox-field input:checked {
     box-shadow: 0 0 1rem 1rem var(--royal-violet) inset;
     color: white;
 }
+.multiple-form-container {
+    display: flex;
+    flex-direction: column;
+}
+/*.eval-form {*/
+/*    max-width: 50vw;*/
+/*}*/
+/*.eval-form input, textarea {*/
+/*    margin-right: 1rem;*/
+/*    flex-grow: 1;*/
+/*}*/
+/*.eval-form .evaluator-text {*/
+/*    max-width: 12rem;*/
+/*}*/
+.eval-table {
+    border-collapse: separate;
+    border-spacing: 0 1rem;
+    width: fit-content;
+}
+.eval-table td {
+    border-bottom: 1px solid var(--static-gray);
+    padding-bottom: 0.5rem;
+    text-align: center;
+
+}
+.eval-table textarea {
+    min-height: 6rem;
+    min-width: 12rem;
+    background-color: var(--astronomical-twilight);
+    color: var(--silver);
+    border: none;
+}
+.eval-table .evaluation_notes-text {
+    width: 100%;
+    min-width: 25rem;
+}
+.eval-table button {
+    font-family: "Fira Mono", monospace;
+    background-color: var(--astronomical-twilight);
+    color: var(--silver);
+    border: none;
+    font-size: 21pt;
+
+}
+.eval-input-row {
+    border-bottom: 1px solid var(--silver);
+}
+.eval-input-row p {
+    font-size: 22pt;
+}
+.eval-input-row .good-bad-field {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+}
+/*.eval-form-inner {*/
+/*    display: flex;*/
+/*    flex-direction: row;*/
+/*    margin-bottom: 1rem;*/
+/*    justify-content: space-evenly;*/
+/*}*/
+
 .pl-table-item {
     padding-right: 1rem;
     max-width: 20rem;
@@ -278,23 +340,23 @@ aside {
     .split-flex-panel-main {
         max-width:75%
     }
-    .verification-form-container {
+    .verification-form-inner {
         max-width: 80vw;
         flex-direction: row;
         flex-shrink: 0;
         flex-grow: 1;
     }
-    .verification-form-container .vertical-form-field,
-    .verification-form-container .good-bad-field {
+    .verification-form-inner .vertical-form-field,
+    .verification-form-inner .good-bad-field {
         margin-right: 2rem;
         flex-grow: 1;
         flex-shrink: 0;
         max-width: 45%
     }
-    .verification-form-container .good-bad-field {
+    .verification-form-inner .good-bad-field {
         flex-direction: column;
     }
-    .verification-form-container .vertical-form-field textarea {
+    .verification-form-inner .vertical-form-field textarea {
         max-height:5rem;
     }
     .flex-panel img {
