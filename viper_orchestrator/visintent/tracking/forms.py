@@ -434,6 +434,22 @@ class RequestForm(JunctionForm):
             r._pid: r.verified for r in self.image_request.image_records
         }
 
+    @property
+    def verification_code(self):
+        if len(self.verification_status) == 0:
+            return ""
+        if all(v is None for v in self.verification_status.values()):
+            return "none"
+        if any(v is None for v in self.verification_status.values()):
+            return "partial"
+        if all(v is True for v in self.verification_status.values()):
+            return "full (passed)"
+        if all(v is True for v in self.verification_status.values()):
+            return "full (passed)"
+        if all(v is False for v in self.verification_status.values()):
+            return "full (failed)"
+        return "full (mixed)"
+
     def filepaths(self):
         # TODO, maybe: is this pathing a little sketchy?
         try:
@@ -500,6 +516,24 @@ class RequestForm(JunctionForm):
             )
         }
         return self._eval_info
+
+    @property
+    def eval_code(self):
+        info = self.eval_info
+        if len(self.verification_status) == 0:
+            return ""
+        if not any(r['critical'] is True for r in info.values()):
+            return "no critical LDST"
+        evaluated = [
+            r['critical'] is True
+            and r['evaluation'] is not None for r in info.values()
+        ]
+        if all(evaluated):
+            return "full"
+        if any(evaluated):
+            return "partial"
+        return "none"
+
 
     # TODO: cut this in a clean way
     def _populate_from_junc_image_request_ldst(self, junc_rows):

@@ -224,28 +224,33 @@ def submitrequest(request: WSGIRequest) -> DjangoResponseType:
     return redirect("/success")
 
 
+@autosession
 @never_cache
-def requestlist(request):
+def requestlist(request, session=None):
     """prep and render list of all existing requests"""
-    with OSession() as session:
-        rows = session.scalars(select(ImageRequest)).all()
-        # noinspection PyUnresolvedReferences
-        rows.sort(key=lambda r: r.request_time, reverse=True)
-        records = []
-        for row in rows:
-            record = {
-                "title": row.title,
-                "request_time": row.request_time,
-                "view_url": (
-                    f"/imagerequest?req_id={row.id}&editing=false"
-                ),
-                "justification": row.justification,
-                "req_id": row.id,
-                "pagetitle": "Image Request List",
-                "status": row.status.name,
-            }
-            records.append(record)
-        # TODO: paginate, preferably configurably
+
+    rows = session.scalars(select(ImageRequest)).all()
+    # noinspection PyUnresolvedReferences
+    rows.sort(key=lambda r: r.request_time, reverse=True)
+    records = []
+    for row in rows:
+        form = RequestForm(image_request=row)
+        record = {
+            "title": row.title,
+            "request_time": row.request_time.isoformat()[:19] + "Z",
+            "view_url": (
+                f"/imagerequest?req_id={row.id}&editing=false"
+            ),
+            "justification": row.justification,
+            "req_id": row.id,
+            "pagetitle": "Image Request List",
+            "status": row.status.name,
+            "n_images": len(row.image_records),
+            "verification": form.verification_code,
+            "evaluation": form.eval_code
+        }
+        records.append(record)
+    # TODO: paginate, preferably configurably
     return render(
         request,
         "request_list.html",

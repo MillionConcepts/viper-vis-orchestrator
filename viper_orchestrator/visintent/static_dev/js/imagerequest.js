@@ -245,6 +245,7 @@ const populatePIDs = function(_event) {
     Array.from(pidHeader.children).slice(-1)[0].classList.add('rightmost-status-link')
 }
 
+// TODO: take this all out and use the properties on the form
 const populateReviewStatus = function(_event) {
     let [evaluatable, verText, verColor] = [true, null, null]
     if (Object.values(verifications).every(v => v === null)) {
