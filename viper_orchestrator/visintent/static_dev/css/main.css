@@ -198,20 +198,49 @@ aside {
     display: flex;
     flex-direction: column;
 }
-/*.eval-form {*/
-/*    max-width: 50vw;*/
-/*}*/
-/*.eval-form input, textarea {*/
-/*    margin-right: 1rem;*/
-/*    flex-grow: 1;*/
-/*}*/
-/*.eval-form .evaluator-text {*/
-/*    max-width: 12rem;*/
-/*}*/
+.colorized-status-header {
+    font-size: 16pt;
+    margin-bottom: 2rem;
+}
+.colorized-status-header p, .colorized-status-header a {
+    font-size: 15pt;
+    margin-bottom: 0.25rem;
+}
+.colorized-status-header a {
+    border-right: 1px solid var(--silver);
+    padding-right: 1rem;
+}
+.colorized-status-header .rightmost-status-link {
+    border-right: none;
+}
+.colorized-status-header .null-link {
+    color: var(--ambiguous-flare)
+}
+.colorized-status-header .false-link {
+    color: var(--old-led)
+}
+.colorized-status-header .true-link {
+    color: var(--phosphor-green)
+}
+.review-status-div {
+    margin-top: 2rem;
+}
+.review-status-div p {
+    font-size: 20pt;
+    margin: 0;
+}
+.review-status-div .horizontal-div {
+    display: flex;
+    flex-direction: row;
+    margin-top: 1rem;
+}
 .eval-table {
     border-collapse: separate;
     border-spacing: 0 1rem;
     width: 75vw;
+}
+.eval-table th {
+    font-size: 15pt;
 }
 .eval-table td {
     border-bottom: 1px solid var(--static-gray);
@@ -232,8 +261,7 @@ aside {
     background-color: var(--astronomical-twilight);
     color: var(--phosphor-green);
     border: 1px solid var(--ambiguous-flare);
-    margin-top: 1rem;
-    margin-bottom: 1rem;
+    margin-left: 2rem;
 }
 .eval-table .evaluation_notes-text {
     width: 100%;
@@ -269,14 +297,6 @@ aside {
 .eval-error-row .hyp-eval-cell {
     background: var(--old-led);
 }
-
-/*.eval-form-inner {*/
-/*    display: flex;*/
-/*    flex-direction: row;*/
-/*    margin-bottom: 1rem;*/
-/*    justify-content: space-evenly;*/
-/*}*/
-
 .pl-table-item {
     padding-right: 1rem;
     max-width: 20rem;

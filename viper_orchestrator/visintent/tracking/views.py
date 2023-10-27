@@ -46,7 +46,6 @@ from viper_orchestrator.visintent.visintent.settings import (
 )
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest, Status
-from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
 
 
 @never_cache
@@ -158,6 +157,7 @@ def imagerequest(
         "filename": filename,
         "file_url": file_url,
         "pagetitle": "Image Request",
+        "verification_json": json.dumps(form.verification_status)
     }
     if evaluation_form is not None:
         # if we have an evaluation form, assume the user marked the hypothesis
@@ -193,14 +193,13 @@ def submitverification(
     return imageview(request, rec_id=request.POST['rec_id'])
 
 
-@autosession
-def submitevaluation(
-    request: WSGIRequest, session: Optional[Session] = None
-) -> DjangoResponseType:
-    form = EvaluationForm.from_wsgirequest(request, session=session)
+def submitevaluation(request: WSGIRequest) -> DjangoResponseType:
+    form = EvaluationForm.from_wsgirequest(request)
     if form.is_valid() is False:
         return imagerequest(request, evaluation_form=form)
-    return HttpResponse("I'm a teapot", status=418)
+    form.commit()
+    return imagerequest(request, evaluation_form=form)
+
 
 @never_cache
 def submitrequest(request: WSGIRequest) -> DjangoResponseType:

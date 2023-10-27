@@ -5,9 +5,11 @@
     {% if form.req_id is not None %}
         <h2>editing image request {{ form.req_id }}</h2>
         {% if form.product_ids|length > 0 %}
-            <h4>associated products:
-            {% for product_id in form.product_ids %}<a href="{{ product_id }}">{{ product_id }}</a> {% endfor %}
-            </h4>
+            {# fully populated in js #}
+            <div id="review-status-div" class="review-status-div">
+                <p id="verification-status-p">verification: </p>  {# populated in js #}
+            </div>
+            <div id="pid-header-div" class="colorized-status-header"><p style="font-size: 16pt">associated products:</p></div>
         {% endif %}
     {% else %}
         <h2>new image request</h2>
@@ -81,7 +83,11 @@
         {% endif %}
         {% endfor %}
         <div>
+            {% if form.req_id is not None %}
+            <button type="submit" name="submitrequest">edit request</button>
+            {% else %}
             <button type="submit" name="submitrequest">submit request</button>
+            {% endif %}
         </div>
         </div>
         {# populated by js #}
@@ -92,6 +98,7 @@
     </form>
 </div>
 <div id="hidden-info" style="display: none">
+    <p id="verification_json">{{ verification_json }}</p>
     <p id="eval_error_json">{{ eval_ui_status.errors }}</p>
     <p id="eval_json" style="display:none">{{ eval_json }}</p>
 </div>

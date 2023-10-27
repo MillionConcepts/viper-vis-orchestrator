@@ -25,11 +25,16 @@ def collstring(coll: Collection) -> str:
     return ",".join(map(str, coll))
 
 
-def pk(obj: Union[type[MappedRow], MappedRow]) -> str:
-    """get the name of a SQLAlchemy table's first primary key"""
+def pk(obj: Union[type[MappedRow], MappedRow]) -> Union[str, tuple[str]]:
+    """get the name of a SQLAlchemy table's primary key(s)"""
     if not isinstance(obj, DeclarativeAttributeIntercept):
-        return inspect(type(obj)).primary_key[0].name
-    return inspect(obj).primary_key[0].name
+        inspection = inspect(type(obj))
+    else:
+        inspection = inspect(obj)
+    keys = [key.name for key in inspection.primary_key]
+    if len(keys) > 1:
+        return tuple(keys)
+    return keys[0]
 
 
 def get_record_attrs(

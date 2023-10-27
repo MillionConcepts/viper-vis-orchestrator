@@ -28,6 +28,28 @@ class SAForm(forms.Form):
             raise NotImplementedError("Only instantiate subclasses of SAForm.")
         super().__init__(*args, **kwargs)
 
+    def _find_key(self, field):
+        if hasattr(self, field):
+            return getattr(self, field)
+        elif self.pk_spec in self.base_fields.keys():
+            return self.cleaned_data[field]
+        raise NotImplementedError
+
+    def get_pk(self):
+        try:
+            if isinstance(self.pk_spec, Mapping):
+                return {k: self._find_key(v) for k, v in self.pk_spec.items()}
+            return self._find_key(self.pk_spec)
+        except (NotImplementedError, AttributeError):
+            raise TypeError("self.pk_field not well-defined")
+        except TypeError:
+            raise TypeError("mangled pk_field definition")
+        except KeyError:
+            raise ValueError(
+                f"defined pk attribute(s) {self.pk_spec} not found as "
+                f"attribute(s) of self or member(s) of self.base_fields"
+            )
+
     def get_row(
         self,
         session: Session,
@@ -52,34 +74,14 @@ class SAForm(forms.Form):
         #  inactive fields (e.g., luminaires for a satisfied image request)
         #  -- this is basically to prevent weird UI bugs from breaking things
         data |= {attr: getattr(self, attr) for attr in self.extra_attrs}
-        try:
-            if hasattr(self, self.pk_field):
-                ref = getattr(self, self.pk_field)
-            elif self.pk_field in self.base_fields.keys():
-                ref = self.cleaned_data[self.pk_field]
-            else:
-                raise NotImplementedError
-        except (NotImplementedError, AttributeError):
-            raise TypeError("self.pk_field not well-defined")
-        except TypeError:
-            raise TypeError("mangled pk_field definition")
-        except KeyError:
-            raise ValueError(
-                f"defined pk attribute {self.pk_field} not an attribute of "
-                f"self or a member of self.base_fields"
-            )
         valid = set(dir(self.table_class))
         try:
-            row = get_one(
-                self.table_class,
-                getattr(self, self.pk_field),
-                session=session
-            )
+            row = get_one(self.table_class, self.get_pk(), session=session)
             for k, v in keyfilter(lambda attr: attr in valid, data).items():
                 setattr(row, k, v)
             self._row = row
         except NoResultFound:
-            data[self.pk_field] = ref
+            # data[self.pk_spec] = ref  # TODO: frivolous?
             if constructor_method is None:
                 constructor = self.table_class
             else:
@@ -105,7 +107,7 @@ class SAForm(forms.Form):
         session.commit()
 
     _row: AppTable = None
-    pk_field: str = None
+    pk_spec: str = None
     table_class: type[AppTable] = None
     extra_attrs: tuple[str] = ()
 
@@ -153,6 +155,34 @@ class JunctionForm(SAForm):
         rel['existing'] = session.scalars(exist_selector).all()
         return rel['existing']
 
+    @staticmethod
+    def _check_row_against_specs(adict, junc_row, rules, specs):
+        matches = []
+        for i, s in specs.items():
+            if (row := s.get(rules['junc_instance_spec_key'])) is None:
+                return
+            row_pk = getattr(row, pk(row))
+            if row_pk == getattr(junc_row, rules['junc_pivot']):
+                matches.append((i, s))
+        # mark table entries not specified in this form for deletion,
+        # unless the form is only for updates and/or single inserts
+        if len(matches) == 0:
+            # TODO, maybe: remove this special-case stuff
+            if rules.get('update_only') or rules.get('never_delete'):
+                return
+            adict['missing'].append(junc_row)
+        elif len(matches) > 1:
+            raise InvalidRequestError(
+                "Only one matching row is expected here; table "
+                "contents appear invalid"
+            )
+        # update fields of existing, specified table entries
+        else:
+            for attr, val in matches[0][1].items():
+                setattr(junc_row, attr, val)
+            adict['present'].append(junc_row)
+            specs.pop(matches[0][0])
+
     def _build_commit(self, table, *, session):
         rel = self._relations[table]
         if not all(
@@ -163,32 +193,10 @@ class JunctionForm(SAForm):
         rules = self.junc_rules[table]
         adict = defaultdict(list, {'existing': rel['existing']})
         for junc_row in adict['existing']:
-            matches = []
-            for i, s in specs.items():
-                if (row := s.get(rules['junc_instance_spec_key'])) is None:
-                    continue
-                row_pk = getattr(row, pk(row))
-                if row_pk == getattr(junc_row, rules['junc_pivot']):
-                    matches.append((i, s))
-            # mark table entries not specified in this form for deletion,
-            # unless the form is only used for updates of this junc row
-            if len(matches) == 0:
-                if rules.get('update_only') is True:
-                    continue
-                adict['missing'].append(junc_row)
-            elif len(matches) > 1:
-                raise InvalidRequestError(
-                    "Only one matching row is expected here; table "
-                    "contents appear invalid"
-                )
-            # update fields of existing, specified table entries
-            else:
-                for attr, val in matches[0][1].items():
-                    setattr(junc_row, attr, val)
-                adict['present'].append(junc_row)
-                specs.pop(matches[0][0])
+            self._check_row_against_specs(adict, junc_row, rules, specs)
         # leftover specs are new table entries
         if len(specs) > 0:
+            # TODO, maybe: remove this special-case stuff
             # for forms that are only used to update existing table entries
             if rules.get('update_only') is True:
                 raise InvalidRequestError(

@@ -1,14 +1,14 @@
 """conventional django forms module"""
 import datetime as dt
-from functools import cached_property, wraps, partial
+from functools import cached_property, wraps
+from types import MappingProxyType as MPt
 from typing import Optional, Union
 
+import sqlalchemy.sql.operators as sqlop
 from django import forms
 from django.core.exceptions import ValidationError
-from dustgoggles.structures import listify
 from sqlalchemy import select
 from sqlalchemy.exc import InvalidRequestError, NoResultFound
-import sqlalchemy.sql.operators as sqlop
 from sqlalchemy.orm import Session
 
 # noinspection PyUnresolvedReferences
@@ -20,7 +20,7 @@ from viper_orchestrator.exceptions import (
     AlreadyLosslessError,
     AlreadyDeletedError,
 )
-from viper_orchestrator.visintent.tracking.sa_forms import JunctionForm
+from viper_orchestrator.visintent.tracking.sa_forms import JunctionForm, SAForm
 from viper_orchestrator.visintent.tracking.tables import ProtectedListEntry
 from viper_orchestrator.visintent.visintent.settings import REQUEST_FILE_URL
 from vipersci.pds.pid import vis_instruments, vis_instrument_aliases
@@ -178,7 +178,7 @@ def ldst_junc_rules(self):
     }
 
 
-class EvaluationForm(JunctionForm):
+class EvaluationForm(SAForm):
     """
     form for science evaluation of image requests. this is _only_ used on the
     backend to help manage relations. we dynamically construct HTML forms
@@ -186,49 +186,17 @@ class EvaluationForm(JunctionForm):
     populating those forms from the DOM representation of a RequestForm.
     """
 
-    @autosession
     def __init__(
         self,
         *args,
         hyp: str,
         req_id: Optional[Union[int, str]] = None,
-        session: Optional[Session] = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         if hyp not in LDST_IDS:
             raise ValueError(f"{hyp} is not a known LDST hypothesis.")
         self.hyp, self.req_id = hyp, int(req_id)
-        self._initialize_from_db(session)
-        a = 1
-
-    def _initialize_from_db(self, session: Session):
-        self.image_request = get_one(
-            ImageRequest, self.req_id, session=session
-        )
-
-    @autosession
-    def get_relations(
-        self, table=JuncImageRequestLDST, *, session: Optional[Session] = None
-    ):
-        """strict version of JunctionForm's get_relations method"""
-        if table != JuncImageRequestLDST:
-            raise TypeError(
-                "This class may only be related to JuncImageRequestLDST"
-            )
-        if self._check_relation_freshness(table, session) is True:
-            return self._relations[table]["existing"]
-        criterion = sqlop.and_(
-            table.image_request_id == self.req_id, table.ldst_id == self.hyp
-        )
-        match = session.scalars(select(table).where(criterion)).all()
-        if len(match) > 1:
-            raise ValueError("Something is wrong with the database structure.")
-        if len(match) == 0:
-            self._relations[table]["existing"] = []
-            return []
-        self._relations[table]["existing"] = [match[0]]
-        return [match[0]]
 
     def clean(self):
         good, bad = (self.cleaned_data.get(b) for b in ('good', 'bad'))
@@ -252,15 +220,15 @@ class EvaluationForm(JunctionForm):
             )
         super().clean()
 
+    extra_attrs = ('evaluation',)
+
     @classmethod
-    @autosession
-    def from_wsgirequest(cls, request, session=None):
+    def from_wsgirequest(cls, request):
         """intended to be called only from a view function."""
         return cls(
             request.POST,
             req_id=request.GET.get("req_id"),
             hyp=request.GET.get("hyp"),
-            session=session,
         )
 
     good = forms.BooleanField(required=False)
@@ -283,19 +251,10 @@ class EvaluationForm(JunctionForm):
         )
     )
 
-    @property
-    def junc_rules(self):
-        return {
-            JuncImageRequestLDST: {
-                "target": LDST,
-                "pivot": ("image_request_id", "req_id"),
-                "junc_pivot": "ldst_id",
-                "junc_instance_spec_key": "ldst",
-                "update_only": True,
-            }
-        }
-
-    evaluation = None
+    pk_spec = MPt({'image_request_id': 'req_id', 'ldst_id': 'hyp'})
+    junc_image_request_ldst_id = None
+    table_class = JuncImageRequestLDST
+    evaluation: Union[bool, str]
 
 
 class VerificationForm(JunctionForm):
@@ -366,7 +325,7 @@ class VerificationForm(JunctionForm):
         required=False,
     )
     table_class = ImageRecord
-    pk_field = "rec_id"
+    pk_spec = "rec_id"
 
     @property
     def junc_rules(self):
@@ -434,7 +393,6 @@ class RequestForm(JunctionForm):
     ):
         super().__init__(*args, **kwargs)
         self._eval_info = _blank_eval_info()
-        self.ldst_hypotheses = _blank_ldst_hypotheses()
         self.image_request = image_request
         if self.image_request is not None:
             self.product_ids = {
@@ -459,12 +417,22 @@ class RequestForm(JunctionForm):
             self.product_ids = set()
         if ldst_hypotheses is not None:
             self.ldst_hypotheses = ldst_hypotheses
+        else:
+            self.ldst_hypotheses = _blank_ldst_hypotheses()
+        self.verification_status = self._get_verification_status()
         if len(self.product_ids) > 0:
             # make fields not required for already-taken images non-mandatory
             # and prohibit editing request information
             for field_name, field in self.fields.items():
                 if field_name not in self.required_intent_fields:
                     field.required, field.disabled = False, True
+
+    def _get_verification_status(self):
+        if self.image_request is None:
+            return {}
+        return {
+            r._pid: r.verified for r in self.image_request.image_records
+        }
 
     def filepaths(self):
         # TODO, maybe: is this pathing a little sketchy?
@@ -517,7 +485,7 @@ class RequestForm(JunctionForm):
                 *args, req_id=req_id, ldst_hypotheses=parsed
             )
         # otherwise simply populate / create blank form
-        return cls(*args)
+        return cls(*args, ldst_hypotheses=parsed)
 
     @property
     def eval_info(self):
@@ -796,7 +764,7 @@ class RequestForm(JunctionForm):
         return self.cleaned_data
 
     ui_only_fields = ("camera_request", "need_360", "supplementary_file")
-    pk_field = "req_id"
+    pk_spec = "req_id"
     # this is actually an optional set of integers, but, in form submission,
     # we retain / parse it as a string for UI reasons. TODO, maybe: clean
     #  that up

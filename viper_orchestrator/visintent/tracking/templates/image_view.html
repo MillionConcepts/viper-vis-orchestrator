@@ -184,7 +184,7 @@
         'partial': {
             'p-color': 'beige',
             'p-text': '- partially passed evaluation',
-            'a-color': 'aliceblue',
+            'a-color': 'lightskyblue',
             'a-text': '[view/edit]',
             'a-href': '{{ request_url }}'
         },
@@ -205,8 +205,8 @@
     }["{{ evaluation }}"]
     const goodCheck = document.getElementById('id_good')
     const badCheck = document.getElementById('id_bad')
-    goodCheck.setAttribute("onclick", "turnOff(badCheck)")
-    badCheck.setAttribute("onclick", "turnOff(goodCheck)")
+    goodCheck.setAttribute("onclick", "unCheck(badCheck)")
+    badCheck.setAttribute("onclick", "unCheck(goodCheck)")
     const verP = document.getElementById('vis-verification-p')
     const verA = document.getElementById('vis-verification-a')
     const evalP = document.getElementById('vis-evaluation-p')
