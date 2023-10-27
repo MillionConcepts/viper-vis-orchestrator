@@ -266,6 +266,7 @@ const populateReviewStatus = function(_event) {
     verificationStatusP.innerText = verificationStatusP.innerText + verText
     verificationStatusP.style.color = verColor
     if (evaluatable === false) {
+        toggleButton.style.display = "none"
         return
     }
     const evalStatusP = W("evaluation: ", "p")
