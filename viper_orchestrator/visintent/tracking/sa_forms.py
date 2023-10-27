@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, object_session
 from viper_orchestrator.db.session import autosession
 from viper_orchestrator.db.table_utils import get_one, pk
 from viper_orchestrator.utils import get_argnames
-from viper_orchestrator.typing import AppTable, JuncRow, JuncRule
+from viper_orchestrator.orchtypes import AppTable, JuncRow, JuncRule
 
 
 class SAForm(forms.Form):
@@ -130,20 +130,26 @@ class JunctionForm(SAForm):
         # objects
         self.junc_specs = {k: [] for k in self.junc_rules.keys()}
 
+    def _check_relation_freshness(
+        self, table: type[JuncRow], session: Session
+    ):
+        return (
+            len(extant := self._relations[table].get('existing', [])) > 0
+            and all(object_session(j) is session for j in extant)
+        )
+
     @autosession
     def get_relations(
         self, table: type[JuncRow], *, session: Optional[Session] = None,
     ) -> dict[str, list[JuncRow]]:
-        rel = self._relations[table]
-        if len(extant := rel.get('existing', [])) > 0:
-            if all(object_session(j) is session for j in extant):
-                return rel
-        rules = self.junc_rules[table]
-        junc_reference, referent = rules["pivot"]
+        if self._check_relation_freshness(table, session) is True:
+            return self._relations[table]
+        junc_reference, referent = self.junc_rules[table]["pivot"]
         # noinspection PyTypeChecker
         exist_selector = select(table).where(
             getattr(table, junc_reference) == getattr(self, referent)
         )
+        rel = self._relations[table]
         rel['existing'] = session.scalars(exist_selector).all()
         return rel['existing']
 

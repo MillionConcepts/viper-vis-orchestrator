@@ -2,7 +2,7 @@
 
 /**
  * @param {string} id
- * @returns Element
+ * @returns HTMLElement
  */
 const gid = (id) => document.getElementById(id)
 
@@ -17,8 +17,13 @@ const listify = function(obj) {
     return [obj]
 }
 
+const H = function(text){
+    this.name = 'implicitHTML'
+    this.text = text
+}
+
 /**
- * @param {string[]|HTMLElement[]|string|HTMLElement} content
+ * @param {string[]|HTMLElement[]|H[]|string|HTMLElement|H} content
  * @param {string|HTMLElement} wrapper
  * @param {...string} classes
  * @returns {HTMLElement}
@@ -35,6 +40,9 @@ const W = function(content, wrapper, ...classes) {
         content.forEach(
             t => wrapper.innerText = wrapper.innerText + t
         )
+    }
+    else if (content[0] instanceof H) {
+        content.forEach(h => wrapper.innerHTML = wrapper.innerHTML + h.text)
     }
     else {
         content.forEach(e => wrapper.appendChild(e))

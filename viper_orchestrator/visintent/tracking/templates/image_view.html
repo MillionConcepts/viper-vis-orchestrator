@@ -1,7 +1,5 @@
-{% load static %}
-{% include "layouts/head.html" %}
-<body>
-{% include "layouts/nav.html" %}
+{% extends "layouts/wrapper.html" %}
+{% block content %}
 <div id="layout-container" class="split-flow-container">
     <div
         id="product-container"
@@ -137,7 +135,9 @@
         </div>
         </div>
     </div>
-<script src="{% static 'js/visibility.js' %}"></script>
+</div>
+{% endblock %}
+{% block localscripts %}
 <script>
     const verificationStyle = {
         'None': {
@@ -228,5 +228,4 @@
     document.addEventListener("DOMContentLoaded", styleVerificationStatus)
     document.addEventListener("DOMContentLoaded", styleEvaluationStatus)
 </script>
-</body>
-</html>
+{% endblock %}

@@ -259,6 +259,17 @@ aside {
     justify-content: space-evenly;
     min-width: 6rem;
 }
+.eval-error-message-row td {
+    color: var(--ambiguous-flare);
+    border-bottom: 1px solid var(--old-led);
+}
+.eval-error-row td {
+    border-bottom: 1px solid var(--old-led);
+}
+.eval-error-row .hyp-eval-cell {
+    background: var(--old-led);
+}
+
 /*.eval-form-inner {*/
 /*    display: flex;*/
 /*    flex-direction: row;*/

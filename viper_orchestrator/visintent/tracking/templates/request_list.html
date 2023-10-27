@@ -1,7 +1,5 @@
-{% load static %}
-{% include "layouts/head.html" %}
-<body>
-{% include "layouts/nav.html" %}
+{% extends "layouts/wrapper.html" %}
+{% block content %}
 <div>
     <div style="display:flex; margin-top: 2rem; margin-bottom: 1rem;">
         <div>
@@ -29,12 +27,11 @@
         </div>
     </div>
 </div>
-<script src="{% static 'js/visibility.js' %}"></script>
+{% endblock %}
+{% block localscripts %}
 <script>
     const defaultTable = "WORKING"
     document.addEventListener("DOMContentLoaded", revealDefault)
     document.addEventListener("DOMContentLoaded", addCounts)
 </script>
-</script>
-</body>
-</html>
+{% endblock %}

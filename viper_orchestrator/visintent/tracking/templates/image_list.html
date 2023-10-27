@@ -1,7 +1,5 @@
-{% load static %}
-{% include "layouts/head.html" %}
-<body>
-{% include "layouts/nav.html" %}
+{% extends "layouts/wrapper.html" %}
+{% block content %}
 <div>
     <div id="instrument-picker" class="horizontal-anchor-container">
         {% for instrument in records.keys %}
@@ -34,11 +32,11 @@
         </table>
     {% endfor %}
 </div>
-<script src="{% static 'js/visibility.js' %}"></script>
+{% endblock %}
+{% block localscripts %}
 <script>
     const defaultTable = "all"
     document.addEventListener("DOMContentLoaded", revealDefault)
     document.addEventListener("DOMContentLoaded", addCounts)
 </script>
-</body>
-</html>
+{% endblock %}

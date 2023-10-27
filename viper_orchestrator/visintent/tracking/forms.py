@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from dustgoggles.structures import listify
 from sqlalchemy import select
 from sqlalchemy.exc import InvalidRequestError, NoResultFound
+import sqlalchemy.sql.operators as sqlop
 from sqlalchemy.orm import Session
 
 # noinspection PyUnresolvedReferences
@@ -189,36 +190,78 @@ class EvaluationForm(JunctionForm):
     def __init__(
         self,
         *args,
-        ldst_id: str,
-        image_request: Optional[ImageRequest] = None,
+        hyp: str,
         req_id: Optional[Union[int, str]] = None,
         session: Optional[Session] = None,
         **kwargs,
     ):
-        if ldst_id not in LDST_IDS:
-            raise ValueError(f"{ldst_id} is not a known LDST hypothesis.")
         super().__init__(*args, **kwargs)
-        self._initialize_from_db(image_request, req_id, session=session)
+        if hyp not in LDST_IDS:
+            raise ValueError(f"{hyp} is not a known LDST hypothesis.")
+        self.hyp, self.req_id = hyp, int(req_id)
+        self._initialize_from_db(session)
+        a = 1
 
-    @_db_init_trywrap
-    def _initialize_from_db(
-        self,
-        image_request: Optional[ImageRequest],
-        req_id: Optional[Union[str, int]],
-        session: Optional[Session],
+    def _initialize_from_db(self, session: Session):
+        self.image_request = get_one(
+            ImageRequest, self.req_id, session=session
+        )
+
+    @autosession
+    def get_relations(
+        self, table=JuncImageRequestLDST, *, session: Optional[Session] = None
     ):
-        if image_request is None and req_id is None:
+        """strict version of JunctionForm's get_relations method"""
+        if table != JuncImageRequestLDST:
             raise TypeError(
-                "Cannot construct this form without an ImageRequest id "
-                "(pk) or an ImageRequest object"
+                "This class may only be related to JuncImageRequestLDST"
             )
-        elif image_request is not None:
-            self.image_request = image_request
+        if self._check_relation_freshness(table, session) is True:
+            return self._relations[table]["existing"]
+        criterion = sqlop.and_(
+            table.image_request_id == self.req_id, table.ldst_id == self.hyp
+        )
+        match = session.scalars(select(table).where(criterion)).all()
+        if len(match) > 1:
+            raise ValueError("Something is wrong with the database structure.")
+        if len(match) == 0:
+            self._relations[table]["existing"] = []
+            return []
+        self._relations[table]["existing"] = [match[0]]
+        return [match[0]]
+
+    def clean(self):
+        good, bad = (self.cleaned_data.get(b) for b in ('good', 'bad'))
+        if good and bad:
+            self.evaluation = "incoherent"
+        elif not (good or bad):
+            self.evaluation = "missing"
+        elif good:
+            self.evaluation = True
         else:
-            self.image_request = get_one(
-                ImageRequest, int(req_id), session=session
+            self.evaluation = False
+        if self.evaluation == "incoherent":
+            self.add_error(
+                None,
+                "cannot both support and not support hypothesis"
             )
-        self.req_id = self.image_request.id
+        elif self.evaluation == "missing":
+            self.add_error(
+                None,
+                "please specify yes or no"
+            )
+        super().clean()
+
+    @classmethod
+    @autosession
+    def from_wsgirequest(cls, request, session=None):
+        """intended to be called only from a view function."""
+        return cls(
+            request.POST,
+            req_id=request.GET.get("req_id"),
+            hyp=request.GET.get("hyp"),
+            session=session,
+        )
 
     good = forms.BooleanField(required=False)
     bad = forms.BooleanField(required=False)
@@ -243,12 +286,16 @@ class EvaluationForm(JunctionForm):
     @property
     def junc_rules(self):
         return {
-            "target": LDST,
-            "pivot": ("image_request_id", "req_id"),
-            "junc_pivot": "ldst_id",
-            "junc_instance_spec_key": "ldst",
-            "update_only": True,
+            JuncImageRequestLDST: {
+                "target": LDST,
+                "pivot": ("image_request_id", "req_id"),
+                "junc_pivot": "ldst_id",
+                "junc_instance_spec_key": "ldst",
+                "update_only": True,
+            }
         }
+
+    evaluation = None
 
 
 class VerificationForm(JunctionForm):
@@ -460,7 +507,12 @@ class RequestForm(JunctionForm):
                     continue
                 hyp, quality = name.split("-")
                 parsed[hyp][quality] = True if checked == "on" else False
-        if (req_id := info.get("req_id")) not in (None, ""):
+        # frontend passes req_id in a url variable. it should be 'None' for a
+        # newly-submitted request, python None when constructing a blank
+        # request form, and an int or string representation of an int
+        # corresponding to an ImageRequest table pk for display of or edits to
+        # an existing request.
+        if (req_id := wsgirequest.GET.get("req_id")) not in (None, "None"):
             return cls.from_request_id(
                 *args, req_id=req_id, ldst_hypotheses=parsed
             )
@@ -670,10 +722,10 @@ class RequestForm(JunctionForm):
     def _construct_ldst_specs(self, session=None):
         """construct JuncImageRequestLDST attrs from form content"""
         for hyp, qualities in self.ldst_hypotheses.items():
-            if qualities['relevant'] is False:
+            if qualities["relevant"] is False:
                 continue
             attrs = {
-                "critical": qualities['critical'],
+                "critical": qualities["critical"],
                 "ldst": get_one(LDST, hyp, session=session),
             }
             self.junc_specs[JuncImageRequestLDST].append(attrs)
@@ -727,6 +779,7 @@ class RequestForm(JunctionForm):
 
     def clean(self):
         super().clean()
+        # TODO: ValidationError if no hypotheses were specified
         self._construct_ldst_specs()
         self._reformat_camera_request()
         if len(self.cleaned_data.get("luminaires", [])) > 2:

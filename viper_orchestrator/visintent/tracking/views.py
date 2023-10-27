@@ -26,7 +26,7 @@ from viper_orchestrator.exceptions import (
     AlreadyLosslessError,
     BadURLError,
 )
-from viper_orchestrator.typing import DjangoResponseType
+from viper_orchestrator.orchtypes import DjangoResponseType
 from viper_orchestrator.visintent.tracking.forms import (
     AssignRecordForm,
     PLSubmission,
@@ -133,7 +133,10 @@ def assign_record(request: WSGIRequest, session=None) -> DjangoResponseType:
 
 
 @never_cache
-def imagerequest(request: WSGIRequest) -> HttpResponse:
+def imagerequest(
+    request: WSGIRequest,
+    evaluation_form: Optional[EvaluationForm] = None
+) -> HttpResponse:
     """render image request form page"""
     form = RequestForm.from_wsgirequest(request, submitted=False)
     editing = request.GET.get("editing", True)
@@ -144,25 +147,31 @@ def imagerequest(request: WSGIRequest) -> HttpResponse:
     showslice = (bound["need_360"]() is True) and showpano
     if form.req_id is None and editing is False:
         return HttpResponse(
-            "cannot generate view for nonexistent image request", status=400
+            "cannot generate view for nonexistent image request",
+            status=400
         )
     filename, file_url = form.filepaths()
-    # if form.req_id is not None:
-    #     evaluation = EvaluationForm(req_id=form.req_id)
+    context = {
+        "form": form,
+        "showpano": showpano,
+        "showslice": showslice,
+        "filename": filename,
+        "file_url": file_url,
+        "pagetitle": "Image Request",
+    }
+    if evaluation_form is not None:
+        # if we have an evaluation form, assume the user marked the hypothesis
+        # as critical even if it hasn't been saved to the database yet (likely
+        # because of evaluation form errors)
+        form.eval_info[evaluation_form.hyp]['relevant'] = True
+        form.eval_info[evaluation_form.hyp]['critical'] = True
+        context['eval_ui_status'] = {
+            'hyp': evaluation_form.hyp,
+            'errors': evaluation_form.errors.as_json(),
+        }
+    context["eval_json"] = json.dumps(form.eval_info)
     try:
-        return render(
-            request,
-            template,
-            {
-                "form": form,
-                "showpano": showpano,
-                "showslice": showslice,
-                "filename": filename,
-                "file_url": file_url,
-                "pagetitle": "Image Request",
-                "eval_json": json.dumps(form.eval_info),
-            },
-        )
+        return render(request, template, context)
     except BadURLError as bue:
         return HttpResponse(str(bue), status=400)
 
@@ -184,11 +193,14 @@ def submitverification(
     return imageview(request, rec_id=request.POST['rec_id'])
 
 
+@autosession
 def submitevaluation(
     request: WSGIRequest, session: Optional[Session] = None
 ) -> DjangoResponseType:
-    a = 1
-
+    form = EvaluationForm.from_wsgirequest(request, session=session)
+    if form.is_valid() is False:
+        return imagerequest(request, evaluation_form=form)
+    return HttpResponse("I'm a teapot", status=418)
 
 @never_cache
 def submitrequest(request: WSGIRequest) -> DjangoResponseType:

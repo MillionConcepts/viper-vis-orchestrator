@@ -1,0 +1,15 @@
+<!DOCTYPE HTML>
+{% load static %}
+<html lang="en">
+{% include "layouts/head.html" %}
+<body>
+{% include "layouts/nav.html" %}
+{% block content %}
+    <h3>empty page</h3>
+{% endblock %}
+<script src="{% static 'js/utils.js' %}"></script>
+<script src="{% static 'js/visibility.js' %}"></script>
+{% block localscripts %}
+{% endblock %}
+</body>
+</html>

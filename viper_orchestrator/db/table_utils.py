@@ -13,7 +13,7 @@ from vipersci.vis.db.image_records import ImageRecord, ImageType
 from vipersci.vis.db.image_requests import ImageRequest
 
 if TYPE_CHECKING:
-    from viper_orchestrator.typing import MappedRow
+    from viper_orchestrator.orchtypes import MappedRow
 
 
 def intsplit(comma_separated_numbers: str) -> set[int]:
@@ -137,10 +137,7 @@ def get_one(
     return result
 
 
-@autosession
-def delete_cascade(
-    obj, junc_names: Collection[str] = (), session=None
-):
+def delete_cascade(obj, junc_names: Collection[str] = (), session=None):
     for name in junc_names:
         relationship = getattr(
             obj.__mapper__.relationships, name
