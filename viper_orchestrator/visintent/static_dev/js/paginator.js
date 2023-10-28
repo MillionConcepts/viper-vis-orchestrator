@@ -1,4 +1,3 @@
-
 /**
  * @param {string} nodeID
  * @param {string[]} attributes
@@ -74,7 +73,7 @@ const showPage = function(page, on = false) {
 }
 
 const splitIntoPages = function(targetSet, nPages, pageSize) {
-    const pageArray = Array()
+    const pageArray = []
     for (let i = 0; i < targetSet.length; i++) {
         let [absolute, targets] = [0, targetSet[i]]
         for (let i = 0; i < nPages; i++) {
@@ -118,7 +117,6 @@ const populateLinkDiv = function(paginator) {
     div.appendChild(navRight)
 }
 
-
 /**
  * @param {targetSpec[][]} targets
  * @param {number} pageSize
@@ -127,34 +125,40 @@ const populateLinkDiv = function(paginator) {
  * @param {?number} currentPage
  * @constructor
  */
-const Paginator = function(
-    targets,
-    linkDiv,
-    pageSize = 8,
-    maxLinks= 10,
-    currentPage= null
-) {
-    this.length = getEqualLength(targets);
-    this.pageSize = pageSize
-    this.nPages = Math.ceil(this.length / this.pageSize)
-    this.targets = targets
-    this.currentPage = currentPage
-    this.linkDiv = linkDiv
-    this.maxLinks = maxLinks
-    this.pages = splitIntoPages(this.targets, this.nPages, this.pageSize)
-    this.pagesPopulated = Array()
-    this.populate = function() {
+class Paginator {
+    constructor(
+        targets,
+        linkDiv,
+        pageSize= 8,
+        maxLinks= 10,
+        currentPage=null
+    ) {
+        this.length = getEqualLength(targets);
+        this.pageSize = pageSize
+        this.nPages = Math.ceil(this.length / this.pageSize)
+        this.targets = targets
+        this.currentPage = currentPage
+        this.linkDiv = linkDiv
+        this.maxLinks = maxLinks
+        this.pages = splitIntoPages(this.targets, this.nPages, this.pageSize)
+        this.pagesPopulated = Array()
+    }
+    populate() {
         if (!this.pagesPopulated.includes(this.currentPage)) {
             populatePage(this.pages[this.currentPage])
             this.pagesPopulated.push(this.currentPage)
         }
     }
-    this.reveal = function(pageNumber) {
+
+    /**
+     * @param {number} pageNumber
+     */
+    reveal(pageNumber) {
         if (this.currentPage === pageNumber) {
             return
         }
         if (this.currentPage !== null) {
-            for (t of [this.currentPage, 'left', 'right']) {
+            for (let t of [this.currentPage, 'left', 'right']) {
                gid(
                    `${this.linkDiv}-link-${t}`
                ).classList.remove('inactive-paginator-link')
@@ -175,11 +179,12 @@ const Paginator = function(
         }
         else if (this.currentPage === 0) {
             gid(`${this.linkDiv}-link-left`).classList.add('inactive-paginator-link')
+            }
         }
-
+    init() {
+        if (this.nPages !== 1) {
+            populateLinkDiv(this)
+        }
+        this.reveal(0)
     }
-    if (this.nPages !== 1) {
-        populateLinkDiv(this)
-    }
-    this.reveal(0)
 }

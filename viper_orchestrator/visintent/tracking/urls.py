@@ -19,5 +19,6 @@ urlpatterns = [
     path("pages", views.pages, name="pages"),
     path("submitverification", views.submitverification, name="verification"),
     path("submitevaluation", views.submitevaluation, name="evaluation"),
-    re_path(f"^{vis_pid_re.pattern}", views.imageview, name="image")
+    re_path(f"^{vis_pid_re.pattern}", views.imageview, name="image"),
+    path("review", views.review, name="review"),
 ]

@@ -1,0 +1,57 @@
+{% extends "layouts/wrapper.html" %}
+{% block content %}
+<div>
+    <div id="review-picker" class="horizontal-anchor-container">
+        <a id="table-verification-anchor"
+           onclick="revealTable('verification')">VIS verification</a>
+        <a id="table-evaluation-anchor"
+           onclick="revealTable('evaluation')">science evaluation</a>
+    </div>
+    <div id="table-container">
+        <p id="table-verification-sorry" style="font-size: 18pt">
+            No products currently exist.</p>
+        <p id="table-evaluation-sorry" style="font-size: 18pt">
+            No requests with assigned critical hypotheses currently have
+            associated products.</p>
+        <table id="table-verification" class="toggle-table paginated-table">
+            <thead>
+                <tr>
+                    <th>VIS PID</th>
+                    <th>critical</th>
+                    <th>VIS verified</th>
+                </tr>
+            </thead>
+            {# populated in js #}
+            <tbody id="table-body-verification"></tbody>
+        </table>
+        <div id="table-evaluation-controls" style="display: flex; flex-direction: row">
+            <p id="filter-critical-status">showing critical only</p>
+            <button id="filter-critical">show all</button>
+        </div>
+        <table id="table-evaluation" class="toggle-table paginated-table">
+            <thead>
+                <tr>
+                    <th>LDST</th>
+                    <th>ID</th>
+                    <th>status</th>
+                    <th>verification</th>
+                    <th>evaluation</th>
+                </tr>
+            </thead>
+            {# populated in js #}
+            <tbody id="table-evaluation-body"></tbody>
+        </table>
+    </div>
+</div>
+<div id="hidden-data-div" style="display: none">
+    <p id="verification_json">{{ verification_json }}</p>
+    <p id="req_verification_code_json">{{ req_verification_code_json }}</p>
+    <p id="evaluation_json">{{ evaluation_json }}</p>
+</div>
+{% endblock %}
+{% block localscripts %}
+<script>
+    const defaultTable = "evaluation"
+
+</script>
+{% endblock %}

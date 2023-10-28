@@ -9,6 +9,7 @@ from django.core.handlers.wsgi import WSGIRequest
 from django.http import HttpResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
+from dustgoggles.structures import NestingDict
 from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import Session
@@ -30,7 +31,7 @@ from viper_orchestrator.visintent.tracking.forms import (
     AssignRecordForm,
     PLSubmission,
     RequestForm,
-    VerificationForm, EvaluationForm,
+    VerificationForm, EvaluationForm, LDST_IDS,
 )
 from viper_orchestrator.visintent.tracking.forms import (
     request_supplementary_path,
@@ -45,6 +46,7 @@ from viper_orchestrator.visintent.visintent.settings import (
 )
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest, Status
+from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
 
 
 @never_cache
@@ -255,6 +257,53 @@ def requestlist(request, session=None):
         "request_list.html",
         {"records": records, "statuses": [s.name for s in Status]},
     )
+
+
+def _get_hyps(hyp, session):
+    # noinspection PyTypeChecker
+    return session.scalars(
+        select(JuncImageRequestLDST).where(JuncImageRequestLDST.ldst_id == hyp)
+    ).all()
+
+
+@never_cache
+@autosession
+def review(
+    request: WSGIRequest, session: Optional[Session]
+) -> DjangoResponseType:
+    evaluations, iverify, rverify = NestingDict(), NestingDict(), {}
+    for rec in session.scalars(select(ImageRecord)).all():
+        iverify[rec.id]['verified'] = rec.verified
+        iverify[rec.id]['pid'] = rec._pid
+        iverify[rec.id][
+            'gentime'
+        ] = rec.yamcs_generation_time.isoformat()[:19] + "Z",
+    for req in session.scalars(select(ImageRequest)).all():
+        form = RequestForm(req)
+        any_critical = False
+        for hyp, e in form.eval_info.items():
+            any_critical = any_critical or e['critical']
+            evaluations[hyp][form.req_id]['critical'] = e['critical']
+            evaluations[hyp][form.req_id]['evaluation'] = e['evaluation']
+        rverify[form.req_id] = form.verification_code
+        if any_critical:
+            for rec in req.image_records:
+                iverify[rec.id]['critical'] = True
+    return render(
+        request,
+        "review.html",
+        context={
+            'verification_json': json.dumps(iverify),
+            'req_verification_code_json': json.dumps(rverify),
+            'evaluation_json': json.dumps(evaluations)
+        }
+    )
+
+
+
+
+
+    return HttpResponse("i'm a teapot", status=418)
 
 
 @never_cache

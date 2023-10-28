@@ -4,6 +4,59 @@
 const tables = Array();
 
 /**
+ * @param {string|string[]|HTMLElement|HTMLElement[]} id
+ * @param {?boolean} visible
+ * @param {string} style
+ */
+const toggleVisibility = function(id, visible= null, style = "") {
+    const elements = [];
+    if (id instanceof Array) {
+        id.forEach(i => elements.push(maybegid(i)))
+    }
+    else {
+        elements.push(maybegid(id))
+    }
+    if (visible === true) {
+        elements.forEach(e => e.style.display = style)
+    }
+    else if (visible === false) {
+        elements.forEach(e => e.style.display = "none")
+    }
+    else if (visible === null) {
+        elements.forEach(
+            e => e.style.display = e.style.display === "none" ? style : "none"
+        )
+    }
+    else {
+        throw new Error(`invalid visibility directive ${visible}`)
+    }
+
+}
+
+/**
+ * @param {?HTMLElement} obj
+ * @param {string} style
+ * @param {string} prop
+ */
+const maybeStyle = function(obj, style='', prop = 'display') {
+    if (obj !== null) {
+        obj.style.setProperty(prop, style)
+    }
+}
+
+/**
+ * @param {HTMLTableElement} table
+ * @returns {number}
+ */
+const nRows = function(table) {
+    const body = Array.from(table.children).filter(c => c.tagName === 'TBODY')[0]
+    if (body === undefined) {
+        return 0
+    }
+    return body.children.length
+}
+
+/**
  * @param {HTMLTableElement} table
  * @param {boolean} visible
  */
@@ -11,62 +64,26 @@ const styleTable = function(table, visible) {
     const anchor = gid(`${table.id}-anchor`)
     const sorry = gid(`${table.id}-sorry`)
     const pageLinks = gid(`${table.id}-paginator-links`)
+    const controls = gid(`${table.id}-controls`)
+    const present = [table, pageLinks, controls].filter(e => e !== null)
     if (visible) {
-        if (table.childElementCount < 2) {
-            table.style.display = 'none';
-            sorry.style.display = ''
-            if (pageLinks !== null) {
-                pageLinks.style.display = 'none'
-            }
+        console.log(table.childElementCount)
+        if (nRows(table) === 0) {
+            maybeStyle(sorry)
+            toggleVisibility(present, false)
         }
         else {
-            table.style.display = ''
-            sorry.style.display = 'none'
-            if (pageLinks !== null) {
-                pageLinks.style.display = ''
-            }
+            maybeStyle(sorry, 'none')
+            toggleVisibility(present, true)
         }
-        anchor.style.color = '#5fc5c6';
+        maybeStyle(anchor, '#5fc5c6', 'color')
     }
     else {
-        table.style.display = 'none';
-        sorry.style.display = 'none';
-        anchor.style.color = '#dee1e3'
-        if (pageLinks !== null) {
-            pageLinks.style.display = 'none'
-        }
+        toggleVisibility(present, false)
+        maybeStyle(sorry, 'none')
+        maybeStyle(anchor, '#dee1e3', 'color')
     }
 };
-
-/**
- * @param {string} id
- * @param {?boolean} visible
- * @param {string} style
- */
-const toggleVisibility = function(id, visible= null, style = "") {
-    const elements = [];
-    if (id instanceof Array) {
-        id.forEach(i => elements.push(document.getElementById(i)))
-    }
-    else {
-        elements.push(document.getElementById(id))
-    }
-    if (visible === true) {
-        elements.forEach(element => element.style.display = style)
-    }
-    else if (visible === false) {
-        elements.forEach(element => element.style.display = "none")
-    }
-    else if (visible === null) {
-        elements.forEach(
-            element =>
-            element.style.display = element.style.display === "none" ? style : "none"
-        )
-    }
-    else {
-        throw `invalid visibility directive ${visible}`
-    }
-}
 
 /**
  * @param {HTMLElement|string} obj

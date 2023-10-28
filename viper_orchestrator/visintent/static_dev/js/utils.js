@@ -7,6 +7,20 @@
 const gid = (id) => document.getElementById(id)
 
 /**
+ * @param {string|HTMLElement} obj
+ * @returns {HTMLElement}
+ */
+const maybeGid = function(obj) {
+    if (typeof(obj) === "string") {
+        return gid(obj)
+    }
+    else if (obj instanceof HTMLElement) {
+        return obj
+    }
+    throw new Error("unknown object type")
+}
+
+/**
  * @param {*} obj
  * @returns {Array|*[]}
  */

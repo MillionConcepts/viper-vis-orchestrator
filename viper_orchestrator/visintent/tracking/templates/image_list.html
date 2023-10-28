@@ -60,11 +60,12 @@
      * @returns {Object<str, Paginator>}
      */
     const buildPaginators = function(specs) {
-        const pObj = {}
         Object.entries(specs).forEach(function(entry) {
-             pObj[entry[0]] = new Paginator(entry[1], `table-${entry[0]}-paginator-links`)
+             paginators[entry[0]] = new Paginator(entry
+                 [1], `table-${entry[0]}-paginator-links`
+             )
         })
-        return pObj
+        Object.values(paginators).forEach(p => p.init())
     }
 
     /**
@@ -94,10 +95,8 @@
             })
             specs[instrument] = [imgSpecs, rowSpecs]
         })
-        // TODO: incredibly awkwary
-        Object.entries(
-            buildPaginators(specs)
-        ).forEach(entry => paginators[entry[0]] = entry[1])
+        buildPaginators(specs)
+
     }
     document.addEventListener("DOMContentLoaded", buildTables)
     document.addEventListener("DOMContentLoaded", revealDefault)
