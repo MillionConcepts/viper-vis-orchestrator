@@ -1,25 +1,30 @@
 /**
- *
  * @type {HTMLTableElement[]}
  */
 const tables = Array();
 
 /**
- *
  * @param {HTMLTableElement} table
  * @param {boolean} visible
  */
 const styleTable = function(table, visible) {
-    const anchor = document.getElementById(`${table.id}-anchor`)
-    const sorry = document.getElementById(`${table.id}-sorry`)
+    const anchor = gid(`${table.id}-anchor`)
+    const sorry = gid(`${table.id}-sorry`)
+    const pageLinks = gid(`${table.id}-paginator-links`)
     if (visible) {
         if (table.childElementCount < 2) {
             table.style.display = 'none';
-            sorry.style.display = 'inherit'
+            sorry.style.display = ''
+            if (pageLinks !== null) {
+                pageLinks.style.display = 'none'
+            }
         }
         else {
-            table.style.display = 'inherit'
+            table.style.display = ''
             sorry.style.display = 'none'
+            if (pageLinks !== null) {
+                pageLinks.style.display = ''
+            }
         }
         anchor.style.color = '#5fc5c6';
     }
@@ -27,16 +32,18 @@ const styleTable = function(table, visible) {
         table.style.display = 'none';
         sorry.style.display = 'none';
         anchor.style.color = '#dee1e3'
+        if (pageLinks !== null) {
+            pageLinks.style.display = 'none'
+        }
     }
 };
 
 /**
- *
  * @param {string} id
  * @param {?boolean} visible
  * @param {string} style
  */
-const toggleVisibility = function(id, visible= null, style = "inherit") {
+const toggleVisibility = function(id, visible= null, style = "") {
     const elements = [];
     if (id instanceof Array) {
         id.forEach(i => elements.push(document.getElementById(i)))
@@ -62,7 +69,6 @@ const toggleVisibility = function(id, visible= null, style = "inherit") {
 }
 
 /**
- *
  * @param {HTMLElement|string} obj
  * @returns {HTMLElement}
  */
@@ -81,7 +87,6 @@ const unCheck = function(element) {
 }
 
 /**
- *
  * @param {HTMLInputElement} target
  * @param {HTMLInputElement} reference
  */
@@ -103,7 +108,6 @@ const populateTableArray = function(_event) {
 }
 
 /**
- *
  * @param {string} post
  */
 const revealTable = function(post) {
@@ -124,6 +128,5 @@ const addCounts = function(_event) {
         anchor.innerText = anchor.innerText.concat(` (${nRows})`)
     })
 }
-
 
 document.addEventListener("DOMContentLoaded", populateTableArray)

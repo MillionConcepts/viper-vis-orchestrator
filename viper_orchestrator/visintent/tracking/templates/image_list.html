@@ -2,40 +2,104 @@
 {% block content %}
 <div>
     <div id="instrument-picker" class="horizontal-anchor-container">
-        {% for instrument in records.keys %}
+        {% for instrument in instruments %}
             <a id="table-{{ instrument }}-anchor"
                onclick="revealTable('{{ instrument }}')">{{ instrument }}
             </a>
         {% endfor %}
     </div>
-    {% for instrument, images in records.items %}
+    <div id="table-container">
+    {% for instrument in instruments %}
         <p id="table-{{ instrument }}-sorry" style="font-size: 18pt">
             No images from these instruments exist in the VIS database.
         </p>
-        <table id="table-{{ instrument }}" class="image-table toggle-table">
+        <table id="table-{{ instrument }}" class="image-table toggle-table paginated-table">
             <thead></thead>
-            {% for image in images %}
-            <tr>
-                <td>
-                    <a href="/{{ image.product_id }}">
-                    <img
-                        src="{{ image.thumbnail_url }}"
-                        alt="thumbnail for {{ image.product_id }}"
-                    >
-                    </a>
-                </td>
-                <td>
-                    <a href="/{{ image.product_id }}">{{ image.product_id }}</a>
-                </td>
-            </tr>
-            {% endfor %}
+            <tbody id = "table-body-{{ instrument }}"></tbody>
         </table>
     {% endfor %}
+    </div>
+</div>
+{% for instrument in instruments %}
+    <div id="table-{{ instrument }}-paginator-links" class="paginator-links"></div>
+{% endfor %}
+<div id="hidden-data-div" style="display: none">
+<p id="record-json">{{ record_json }}</p>
 </div>
 {% endblock %}
 {% block localscripts %}
 <script>
     const defaultTable = "all"
+    const records = JSON.parse(gid('record-json').innerText)
+    /**
+     * @type {Object<str, Paginator>}
+     */
+    const paginators = {}
+    /**
+     * @param {string} instrument
+     * @param {Object<string, string>} rowRec
+     * @returns {Object<string, targetSpec|HTMLElement>}
+     */
+    const makeRow = function(instrument, rowRec) {
+        const output = Object()
+        const img = document.createElement("img")
+        img.id = `${instrument}-${rowRec['product_id']}-img`
+        output['img'] = W(img, "a")
+        output['img'].href = rowRec['product_id']
+        output['link'] = W(rowRec['product_id'], 'a')
+        output['link'].id = `${instrument}-${rowRec['product_id']}-link`
+        output['link'].href = rowRec['product_id']
+        // we don't care about lazily populating the links, only lazily
+        // loading the thumbnails, and we will hide the containing <tr> elements
+        output['imgSpec'] = new targetSpec(img.id, ["src"], [rowRec["thumbnail_url"]])
+        return output
+    }
+
+    /**
+     * @param {Object<str, targetSpec[][]>} specs
+     * @returns {Object<str, Paginator>}
+     */
+    const buildPaginators = function(specs) {
+        const pObj = {}
+        Object.entries(specs).forEach(function(entry) {
+             pObj[entry[0]] = new Paginator(entry[1], `table-${entry[0]}-paginator-links`)
+        })
+        return pObj
+    }
+
+    /**
+     * @returns {Paginator[]}
+     */
+    const buildTables = function(_event) {
+        /**
+         * @type {Object<str, targetSpec[][]>}
+         */
+        const specs = Object()
+        Object.entries(records).forEach(function(entry) {
+            const [instrument, rows] = [entry[0], entry[1]]
+            const [imgSpecs, rowSpecs] = [[], []]
+            let rowNum = 0
+            const iTable = gid(`table-body-${instrument}`)
+            rows.forEach(function (rowRec) {
+                const rowDef = makeRow(instrument, rowRec)
+                imgSpecs.push(rowDef['imgSpec'])
+                const tr = W(
+                    [W(rowDef['img'], "td"), W(rowDef['link'], "td")],
+                    "tr"
+                )
+                tr.id = `${instrument}-row-${rowNum}`
+                rowSpecs.push(new targetSpec(tr.id))
+                iTable.appendChild(tr)
+                rowNum++
+            })
+            specs[instrument] = [imgSpecs, rowSpecs]
+        })
+        // TODO: incredibly awkwary
+        Object.entries(
+            buildPaginators(specs)
+        ).forEach(entry => paginators[entry[0]] = entry[1])
+    }
+    document.addEventListener("DOMContentLoaded", buildTables)
     document.addEventListener("DOMContentLoaded", revealDefault)
     document.addEventListener("DOMContentLoaded", addCounts)
 </script>

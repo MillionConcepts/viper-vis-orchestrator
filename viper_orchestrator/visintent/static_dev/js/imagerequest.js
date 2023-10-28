@@ -280,7 +280,7 @@ const populateReviewStatus = function(_event) {
             "no critical hypotheses", "lightskyblue", false
         ]
     }
-    if (evaluated.every(e => e === true)) {
+    else if (evaluated.every(e => e === true)) {
         [evalText, evalColor] = [" full", "#00CC11"]
     }
     else if (evaluated.some(e => e === true)) {
@@ -299,9 +299,6 @@ const populateReviewStatus = function(_event) {
     else {
         toggleButton.innerText = "hide evaluation interface"
     }
-
-
-
 }
 
 cameraRequest.addEventListener('change', togglePanoVisibility);

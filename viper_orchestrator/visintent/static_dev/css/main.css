@@ -344,7 +344,7 @@ aside {
     border-top: 1px solid var(--silver);
     padding-top: 1rem;
 }
-.request-table th, td {
+.request-table th, .request-table td {
     padding-right: 1rem;
     padding-left: 1rem;
 }
@@ -403,8 +403,19 @@ aside {
     width: 1.8rem;
     vertical-align: middle;
 }
-.toggle-table {
-    display: none;
+.paginator-links {
+    margin-top: 2rem;
+    margin-left: 25%;
+    font-size: 22pt;
+    display: flex;
+    flex-direction: row;
+}
+.paginator-links .inactive-paginator-link {
+    color: var(--silver);
+    pointer-events: none;
+}
+#table-container {
+    height: 45rem;
 }
 .image-table img {
     height:5rem;

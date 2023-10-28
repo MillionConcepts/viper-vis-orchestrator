@@ -19,8 +19,7 @@ from viper_orchestrator.db import OSession
 from viper_orchestrator.db.session import autosession
 from viper_orchestrator.db.table_utils import (
     image_request_capturesets,
-    get_one, delete_cascade,
-)
+    get_one, )
 from viper_orchestrator.exceptions import (
     AlreadyDeletedError,
     AlreadyLosslessError,
@@ -387,7 +386,11 @@ def imagelist(request, session=None):
     return render(
         request,
         "image_list.html",
-        {"records": dict(records), "pagetitle": "Image List"},
+        {
+            "record_json": json.dumps(records),
+            "pagetitle": "Image List",
+            "instruments": records.keys()
+        },
     )
 
 
