@@ -31,11 +31,6 @@ const listify = function(obj) {
     return [obj]
 }
 
-const H = function(text){
-    this.name = 'implicitHTML'
-    this.text = text
-}
-
 /**
  * @param {string[]|HTMLElement[]|H[]|string|HTMLElement|H} content
  * @param {string|HTMLElement} wrapper
@@ -54,9 +49,6 @@ const W = function(content, wrapper, ...classes) {
         content.forEach(
             t => wrapper.innerText = wrapper.innerText + t
         )
-    }
-    else if (content[0] instanceof H) {
-        content.forEach(h => wrapper.innerHTML = wrapper.innerHTML + h.text)
     }
     else {
         content.forEach(e => wrapper.appendChild(e))
@@ -94,4 +86,49 @@ const L = function(element, text=null, wrap=false) {
         return [label]
     }
     return [label, element]
+}
+
+/**
+ *
+ * @param {function(...*):* } func
+ * @param {*} args
+ * @param {?number} offset
+ * @returns {function(...*):*}
+ */
+const partial = function(func, args, offset=null) {
+    const boundArgs = listify(args)
+    /**
+     * @type *[]
+     */
+    const shift = offset === null ? 0 : offset
+    return function(...args) {
+        const finalArgs = []
+        const nExpected = args.length + boundArgs.length
+        let [boundPointer, argPointer] = [0, 0]
+        for (let i = 0; i < nExpected; i++) {
+            if (i <= shift && boundPointer < boundArgs.length) {
+                finalArgs.push(boundArgs[boundPointer])
+                boundPointer++
+            }
+            else {
+                finalArgs.push(args[argPointer])
+                argPointer++
+            }
+        }
+        return func(...finalArgs)
+    }
+}
+
+/**
+ * sorts an Object into an Array of entries. note that the property
+ * collection of an object is unsorted, so you cannot insert keys in order
+ * to produce a 'sorted Object'.
+ * @param {Object} obj
+ * @param {function([string, *], [string, *], ...):{number}} compareFn
+ * @param {...*} sortArgs
+ * @returns {[string, *][]}
+ */
+const objsort = function(obj, compareFn, ...sortArgs) {
+    const boundComp = partial(compareFn, sortArgs, 2)
+    return Array.from(Object.entries(obj)).sort(boundComp)
 }

@@ -340,9 +340,36 @@ aside {
     max-height: 50rem;
     overflow: scroll;
 }
-.request-table {
+.table-controls {
+    display: flex;
+    flex-direction: row;
+    font-size: 16pt;
+    margin-bottom: 0;
+    margin-top: 0;
+}
+.table-controls .vertical-control-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.table-controls p {
+    margin: 0;
+    color: lightskyblue;
+}
+.table-controls button {
+    margin-top: 0.25rem;
+    font-size: 16pt;
+    font-family: "Fira Mono", monospace;
+    background-color: var(--astronomical-twilight);
+    border: 2px solid var(--phosphor-green);
+    color: var(--ambiguous-flare)
+}
+.request-table, .sorry-p {
     border-top: 1px solid var(--silver);
     padding-top: 1rem;
+}
+.sorry-p {
+    font-size: 18pt;
 }
 .request-table th, .request-table td {
     padding-right: 1rem;
@@ -506,19 +533,23 @@ aside {
     font-size: 13pt;
     margin: 0;
 }
+.spacer-line {
+    height: 2rem;
+    border-left: 1px solid var(--silver);
+    width: 1px;
+}
 .horizontal-anchor-container {
     display: flex;
     flex-direction: row;
     margin-bottom: 2rem;
     padding-left: 1rem;
-    border-left: 2px solid var(--silver)
+    align-items: center;
 }
 .horizontal-anchor-container a {
     font-size: 24px;
     color: var(--silver);
-    margin-right: 1rem;
-    padding-right: 1rem;
-    border-right: 2px solid var(--silver)
+    margin-right: 0.7rem;
+    margin-left: 0.7rem;
 }
 .record-assign label {
     margin-right: 0.25rem;

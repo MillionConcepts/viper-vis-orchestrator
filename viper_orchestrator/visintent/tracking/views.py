@@ -4,7 +4,7 @@ import shutil
 from collections import defaultdict
 from typing import Optional
 
-from cytoolz import groupby
+from cytoolz import groupby, valmap
 from django.core.handlers.wsgi import WSGIRequest
 from django.http import HttpResponse
 from django.shortcuts import render, redirect
@@ -229,7 +229,6 @@ def submitrequest(request: WSGIRequest) -> DjangoResponseType:
 @never_cache
 def requestlist(request, session=None):
     """prep and render list of all existing requests"""
-
     rows = session.scalars(select(ImageRequest)).all()
     # noinspection PyUnresolvedReferences
     rows.sort(key=lambda r: r.request_time, reverse=True)
@@ -266,44 +265,53 @@ def _get_hyps(hyp, session):
     ).all()
 
 
+def verification_record(rec: ImageRecord):
+    return {
+        'verified': rec.verified,
+        'pid': rec._pid,
+        'gentime': rec.yamcs_generation_time.isoformat()[:19] + "Z",
+        'req_id': None if rec.image_request is None else rec.image_request.id
+    }
+
+
+def review_info_dict(session):
+    eval_by_req, eval_by_hyp = {}, NestingDict()
+    rec_verifications, req_verification_codes = {}, {}
+    for rec in session.scalars(select(ImageRecord)).all():
+        rec_verifications[rec.id] = verification_record(rec)
+    for req in session.scalars(select(ImageRequest)).all():
+        form = RequestForm(image_request=req)
+        # to assign to recs in a moment -- for UI, we care whether an image
+        # is critical to _any_ hyp
+        any_critical = False
+        eval_by_req[req.id] = form.eval_info
+        for hyp, e in eval_by_req[req.id].items():
+            any_critical = any_critical or e['critical']
+            eval_by_hyp[hyp][req.id]['critical'] = e['critical']
+            eval_by_hyp[hyp][req.id]['evaluation'] = e['evaluation']
+        req_verification_codes[req.id] = form.verification_code
+        for rec in req.image_records:
+            if any_critical:
+                rec_verifications[rec.id]['critical'] = True
+            rec_verifications[rec.id]['req_id'] = req.id
+    return {
+        'eval_by_req': eval_by_req,
+        'eval_by_hyp': eval_by_hyp.todict(),
+        'req_verification_codes': req_verification_codes,
+        'rec_verifications': rec_verifications,
+    }
+
+
 @never_cache
 @autosession
 def review(
     request: WSGIRequest, session: Optional[Session]
 ) -> DjangoResponseType:
-    evaluations, iverify, rverify = NestingDict(), NestingDict(), {}
-    for rec in session.scalars(select(ImageRecord)).all():
-        iverify[rec.id]['verified'] = rec.verified
-        iverify[rec.id]['pid'] = rec._pid
-        iverify[rec.id][
-            'gentime'
-        ] = rec.yamcs_generation_time.isoformat()[:19] + "Z",
-    for req in session.scalars(select(ImageRequest)).all():
-        form = RequestForm(req)
-        any_critical = False
-        for hyp, e in form.eval_info.items():
-            any_critical = any_critical or e['critical']
-            evaluations[hyp][form.req_id]['critical'] = e['critical']
-            evaluations[hyp][form.req_id]['evaluation'] = e['evaluation']
-        rverify[form.req_id] = form.verification_code
-        if any_critical:
-            for rec in req.image_records:
-                iverify[rec.id]['critical'] = True
     return render(
         request,
         "review.html",
-        context={
-            'verification_json': json.dumps(iverify),
-            'req_verification_code_json': json.dumps(rverify),
-            'evaluation_json': json.dumps(evaluations)
-        }
+        context=valmap(json.dumps, review_info_dict(session))
     )
-
-
-
-
-
-    return HttpResponse("i'm a teapot", status=418)
 
 
 @never_cache

@@ -44,11 +44,14 @@ const populatePage = function(targets) {
 }
 
 /**
- * @param {number} i
+ * @param {?number} i
  * @param {string} parentID
  * @param {number} maximum
  */
 const revealAround = function(i, parentID, maximum) {
+    if (i === null) {
+        return
+    }
     const children = Array.from(gid(parentID).children)
     let nRevealed = 0
     for (let j = 0; j < children.length; j++) {
@@ -72,6 +75,12 @@ const showPage = function(page, on = false) {
     })
 }
 
+/**
+ * @param {targetSpec[][]} targetSet
+ * @param {number} nPages
+ * @param {number} pageSize
+ * @returns {targetSpec[][]}
+ */
 const splitIntoPages = function(targetSet, nPages, pageSize) {
     const pageArray = []
     for (let i = 0; i < targetSet.length; i++) {
@@ -129,9 +138,9 @@ class Paginator {
     constructor(
         targets,
         linkDiv,
-        pageSize= 8,
-        maxLinks= 10,
-        currentPage=null
+        pageSize = 8,
+        maxLinks = 10,
+        currentPage = 0
     ) {
         this.length = getEqualLength(targets);
         this.pageSize = pageSize
@@ -143,6 +152,7 @@ class Paginator {
         this.pages = splitIntoPages(this.targets, this.nPages, this.pageSize)
         this.pagesPopulated = Array()
     }
+
     populate() {
         if (!this.pagesPopulated.includes(this.currentPage)) {
             populatePage(this.pages[this.currentPage])
@@ -153,15 +163,25 @@ class Paginator {
     /**
      * @param {number} pageNumber
      */
+    linkNode(pageNumber) {
+        return gid(`${this.linkDiv}-link-${pageNumber}`)
+    }
+
+    /**
+     * @param {number} pageNumber
+     */
     reveal(pageNumber) {
-        if (this.currentPage === pageNumber) {
+        if (
+            this.currentPage === pageNumber
+            && this.pagesPopulated.includes(pageNumber)
+        ) {
             return
         }
-        if (this.currentPage !== null) {
+        if (this.nPages > 1) {
             for (let t of [this.currentPage, 'left', 'right']) {
-               gid(
-                   `${this.linkDiv}-link-${t}`
-               ).classList.remove('inactive-paginator-link')
+                gid(
+                    `${this.linkDiv}-link-${t}`
+                ).classList.remove('inactive-paginator-link')
             }
         }
         this.currentPage = pageNumber
@@ -173,7 +193,7 @@ class Paginator {
         if (this.nPages === 1) {
             return
         }
-        gid(`${this.linkDiv}-link-${pageNumber}`).classList.add('inactive-paginator-link')
+        this.linkNode(this.currentPage).classList.add('inactive-paginator-link')
         if (this.currentPage === this.nPages - 1) {
             gid(`${this.linkDiv}-link-right`).classList.add('inactive-paginator-link')
         }
@@ -181,10 +201,11 @@ class Paginator {
             gid(`${this.linkDiv}-link-left`).classList.add('inactive-paginator-link')
             }
         }
+
     init() {
         if (this.nPages !== 1) {
             populateLinkDiv(this)
         }
-        this.reveal(0)
+        this.reveal(this.currentPage)
     }
 }

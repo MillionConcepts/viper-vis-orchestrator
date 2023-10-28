@@ -1,33 +1,45 @@
 {% extends "layouts/wrapper.html" %}
 {% block content %}
 <div>
-    <div id="review-picker" class="horizontal-anchor-container">
+    <div id="review-picker" class="horizontal-anchor-container" style="height:4rem;">
         <a id="table-verification-anchor"
            onclick="revealTable('verification')">VIS verification</a>
+        <div class="spacer-line"></div>
         <a id="table-evaluation-anchor"
            onclick="revealTable('evaluation')">science evaluation</a>
+        <div id="table-verification-controls" style="display: flex; flex-direction: column; margin-left: 20vw">
+            <p style="text-align: center; margin-top: 0; margin-bottom:0; font-size: 16pt; color: lightskyblue">filters</p>
+        <div class="table-controls">
+            <div class="vertical-control-container">
+            <p id="filter-critical-status">critical</p>
+            <button id="filter-critical-button" onclick="toggleCritical()">turn off</button>
+            </div>
+            <div class="vertical-control-container">
+            <p id="filter-verified-status">verified</p>
+            <button id="filter-verified-button" onclick="toggleVerified()">turn off</button>
+            </div>
+        </div>
+        </div>
     </div>
-    <div id="table-container">
-        <p id="table-verification-sorry" style="font-size: 18pt">
+    <div id="table-container" style="height:70vh;">
+        <p id="table-verification-sorry"  class="sorry-p">
             No products currently exist.</p>
-        <p id="table-evaluation-sorry" style="font-size: 18pt">
+        <p id="table-evaluation-sorry" class="sorry-p">
             No requests with assigned critical hypotheses currently have
             associated products.</p>
-        <table id="table-verification" class="toggle-table paginated-table">
+        <table id="table-verification" class="toggle-table paginated-table request-table">
             <thead>
                 <tr>
                     <th>VIS PID</th>
+                    <th>verified</th>
                     <th>critical</th>
-                    <th>VIS verified</th>
+                    <th>gentime</th>
+                    <th>request ID</th>
                 </tr>
             </thead>
             {# populated in js #}
             <tbody id="table-body-verification"></tbody>
         </table>
-        <div id="table-evaluation-controls" style="display: flex; flex-direction: row">
-            <p id="filter-critical-status">showing critical only</p>
-            <button id="filter-critical">show all</button>
-        </div>
         <table id="table-evaluation" class="toggle-table paginated-table">
             <thead>
                 <tr>
@@ -44,14 +56,144 @@
     </div>
 </div>
 <div id="hidden-data-div" style="display: none">
-    <p id="verification_json">{{ verification_json }}</p>
-    <p id="req_verification_code_json">{{ req_verification_code_json }}</p>
-    <p id="evaluation_json">{{ evaluation_json }}</p>
+    <p id="eval_by_req">{{ eval_by_req }}</p>
+    <p id="eval_by_hyp">{{ eval_by_hyp }}</p>
+    <p id="req_verification_codes">{{ req_verification_codes }}</p>
+    <p id="rec_verifications">{{ rec_verifications }}</p>
 </div>
 {% endblock %}
 {% block localscripts %}
 <script>
-    const defaultTable = "evaluation"
+    /**
+     * @typedef evaluationRecord
+     * @property {?boolean} relevant - relevant to this hypothesis
+     * @property {?boolean} critical - critical to this hypothesis
+     * @property {?boolean} evaluation - supports? null means not yet evaluated.
+     * @property {?string} evaluator - who evaluated it?
+     * @property {?string} evaluation_notes - notes on decision?
+     */
 
+    /**
+     * @typedef verificationRecord
+     * @property {?boolean} verified - good/bad? null means not yet reviewed.
+     * @property {?boolean} critical - LDST critical? null === no associated request.
+     * @property {string} gentime - yamcs generation time in truncated iso format
+     * @property {?number} req_id - associated request, if any
+     * @property {string} pid - VIS product ID
+     */
+
+    const defaultTable = "verification"
+    /**
+     * verification status by ImageRecord ID
+     * @type {Object<string, Object<string, verificationRecord>>}
+     */
+    const verifications = JSON.parse(gid('rec_verifications').innerText)
+    /**
+     * evaluation status, organized such that top level is ImageRequest id
+     * and second level is LDST id
+     * @type {Object<str, Object<string, evaluationRecord>>}
+     */
+    const evalByReq = JSON.parse(gid('eval_by_req').innerText)
+    /**
+     * evaluation status, organized such that top level is LDST id
+     * and second level is ImageRequest id
+     * @type {Object<str, Object<str, ?(boolean|str|number)>>}
+     */
+    const evalByHyp = JSON.parse(gid('eval_by_hyp').innerText)
+    /**
+     * summary verification status codes for each ImageRequest
+     * @type {Object<string, string>}
+     */
+    const reqVCodes = JSON.parse(gid('req_verification_codes').innerText)
+    const criticalFilterButton = gid('filter-critical-button')
+    const criticalFilterText = gid('filter-critical-status')
+    const verifiedFilterButton = gid('filter-verified-button')
+    const verifiedFilterText = gid('filter-verified-status')
+    let filteringCritical = true
+    let filteringVerified = true
+    const gentimeCompareFn = function(a, b, descending=true) {
+        const s = descending ? [a[1], b[1]] : [b[1], a[1]]
+        if (s[0]['gentime'] > s[1]['gentime']) {
+            return -1
+        } else if (s[0]['gentime'] < s[1]['gentime']) {
+            return 1
+        }
+        return 0
+    }
+    const vStyle = {
+        "null": {"text": "unverified", "color": "#D79A00"},
+        "true": {"text": "passed", "color": "#00CC11"},
+        "false": {"text": "failed", color: "#BB2222"}
+    }
+
+    const maybeHideRows = function(_event = null) {
+        const vRows = document.getElementsByClassName('verification-row')
+        for (let row of vRows) {
+            console.log(row)
+            if (row.classList.contains('non-critical-row') && filteringCritical) {
+                console.log('hi')
+                row.style.display = "none"
+            }
+            else if (row.classList.contains('verified-row') && filteringVerified) {
+                row.style.display = "none"
+            }
+            else {
+                row.style.display = ""
+            }
+        }
+    }
+
+    const toggleCritical = function () {
+        filteringCritical = !filteringCritical
+        if (filteringCritical === false) {
+            criticalFilterButton.innerText = "turn on"
+        }
+        else {
+            criticalFilterButton.innerText = "turn off"
+        }
+        maybeHideRows()
+    }
+    const toggleVerified = function () {
+        filteringVerified = !filteringVerified
+        if (filteringVerified === false) {
+            verifiedFilterButton.innerText = "turn on"
+        }
+        else {
+            verifiedFilterButton.innerText = "turn off"
+        }
+        maybeHideRows()
+    }
+
+    const buildVerificationTable = function(_event) {
+        const vTable = gid('table-body-verification')
+        let rowNum = 0
+        const rows = objsort(verifications, gentimeCompareFn)
+        rows.forEach(
+            function([_id, {verified, critical, gentime, req_id, pid}]) {
+                const pCell = W(pid, "a")
+                pCell.href = pid
+                const vCell = W(vStyle[String(verified)]['text'], "p")
+                vCell.style.color = vStyle[String(verified)]['color']
+                const critMark = critical ? 'X' : ''
+                const rCell = W(String(req_id), "a")
+                rCell.href = `imagerequest?req_id=${req_id}`
+                const cells = [
+                    pCell, vCell, critMark, gentime, rCell
+                ].map(e => W(e, "td"))
+                const tr = W(cells, "tr", 'verification-row')
+                tr.id = `verification-row-${rowNum}`
+                if (critical !== true) {
+                    tr.classList.add('non-critical-row')
+                }
+                if (verified !== null) {
+                    tr.classList.add('verified-row')
+                }
+                vTable.appendChild(tr)
+                rowNum++
+        })
+    }
+    document.addEventListener("DOMContentLoaded", buildVerificationTable)
+    document.addEventListener("DOMContentLoaded", maybeHideRows)
+    document.addEventListener("DOMContentLoaded", revealDefault)
 </script>
 {% endblock %}

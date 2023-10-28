@@ -67,7 +67,6 @@ const styleTable = function(table, visible) {
     const controls = gid(`${table.id}-controls`)
     const present = [table, pageLinks, controls].filter(e => e !== null)
     if (visible) {
-        console.log(table.childElementCount)
         if (nRows(table) === 0) {
             maybeStyle(sorry)
             toggleVisibility(present, false)

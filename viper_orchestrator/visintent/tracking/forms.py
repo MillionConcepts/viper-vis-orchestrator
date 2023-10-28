@@ -437,7 +437,7 @@ class RequestForm(JunctionForm):
     @property
     def verification_code(self):
         if len(self.verification_status) == 0:
-            return ""
+            return "no images"
         if all(v is None for v in self.verification_status.values()):
             return "none"
         if any(v is None for v in self.verification_status.values()):
