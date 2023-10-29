@@ -21,4 +21,5 @@ urlpatterns = [
     path("submitevaluation", views.submitevaluation, name="evaluation"),
     re_path(f"^{vis_pid_re.pattern}", views.imageview, name="image"),
     path("review", views.review, name="review"),
+    path("ldst_status", views.ldst_status, name="ldst_status"),
 ]

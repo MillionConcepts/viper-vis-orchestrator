@@ -274,34 +274,120 @@ def verification_record(rec: ImageRecord):
     }
 
 
-def review_info_dict(session):
-    eval_by_req, eval_by_hyp = {}, NestingDict()
-    rec_verifications, req_verification_codes = {}, {}
-    for rec in session.scalars(select(ImageRecord)).all():
-        rec_verifications[rec.id] = verification_record(rec)
-    for req in session.scalars(select(ImageRequest)).all():
-        form = RequestForm(image_request=req)
-        # to assign to recs in a moment -- for UI, we care whether an image
-        # is critical to _any_ hyp
-        any_critical = False
-        eval_by_req[req.id] = form.eval_info
-        for hyp, e in eval_by_req[req.id].items():
-            any_critical = any_critical or e['critical']
-            eval_by_hyp[hyp][req.id]['critical'] = e['critical']
-            eval_by_hyp[hyp][req.id]['evaluation'] = e['evaluation']
-        req_verification_codes[req.id] = form.verification_code
-        for rec in req.image_records:
-            if any_critical:
-                rec_verifications[rec.id]['critical'] = True
-            rec_verifications[rec.id]['req_id'] = req.id
+def request_info_record(req: ImageRequest):
+    form = RequestForm(image_request=req)
     return {
-        'eval_by_req': eval_by_req,
-        'eval_by_hyp': eval_by_hyp.todict(),
-        'req_verification_codes': req_verification_codes,
-        'rec_verifications': rec_verifications,
+        'vcode': form.verification_code,
+        'ecode': form.eval_code,
+        'status': req.status.name,
+        'title': req.title,
+        'critical': form.is_critical,
+        'rec_ids': [rec.id for rec in req.image_records],
+        'acquired': len(req.image_records) > 0,
+        'pending_vis': form.pending_vis,
+        'pending_eval': form.pending_eval,
+        'evaluation_possible': form.evaluation_possible,
+        'pending_evaluations': form.pending_evaluations
+    }, form
+
+
+def request_review_dict(session):
+    return {
+        req.id: request_info_record(req)[0]
+        for req in session.scalars(select(ImageRequest)).all()
     }
 
 
+def ldst_summary_dict(hyp_eval: dict, req_info: dict):
+    summary = {
+        'relevant': 0,
+        'critical': 0,
+        'acquired': 0,
+        'pending_vis': 0,
+        'pending_eval': 0,
+        'passed': 0,
+        'failed': 0
+    }
+    for req_id, status in hyp_eval.items():
+
+        if status['relevant'] is True:
+            summary['relevant'] += 1
+        critical, acquired = status['critical'], req_info[req_id]['acquired']
+        if critical is True:
+            summary['critical'] += 1
+        if acquired is True:
+            summary['acquired'] += 1
+        if not (acquired and critical):
+            continue
+        if req_info[req_id]['pending_vis'] is True:
+            summary['pending_vis'] += 1
+        elif status['pending_eval'] is True:
+            summary['pending_eval'] += 1
+        elif status['evaluation'] is True:
+            summary['passed'] += 1
+        elif status['evaluation'] is False:
+            summary['failed'] += 1
+        else:
+            raise ValueError
+    return summary
+
+
+def ldst_status_dict(session):
+    eval_by_req, eval_by_hyp, req_info = {}, NestingDict(), NestingDict()
+    for req in session.scalars(select(ImageRequest)).all():
+        req_info[req.id], form = request_info_record(req)
+        eval_by_req[req.id] = form.eval_info
+        for hyp, e in eval_by_req[req.id].items():
+            eval_by_hyp[hyp][req.id]['relevant'] = e['relevant']
+            eval_by_hyp[hyp][req.id]['critical'] = e['critical']
+            eval_by_hyp[hyp][req.id]['evaluation'] = e['evaluation']
+            eval_by_hyp[hyp][req.id]['pending_eval'] = (
+                hyp in req_info[req.id]['pending_evaluations']
+            )
+    ldst_summary_info = {
+        hyp: ldst_summary_dict(eval_by_hyp[hyp], req_info)
+        for hyp in eval_by_hyp.keys()
+    }
+    return {
+        'eval_by_req': eval_by_req,
+        'eval_by_hyp': eval_by_hyp.todict(),
+        'req_info': req_info.todict(),
+        'ldst_summary_info': ldst_summary_info
+    }
+
+
+def verification_info_dict(session):
+    return {
+        rec.id: verification_record(rec)
+        for rec in session.scalars(select(ImageRecord)).all()
+    }
+
+
+def review_info_dict(session):
+    verifications = verification_info_dict(session)
+    req_info = request_review_dict(session)
+    for req_id, info in req_info.items():
+        for rec_id in info['rec_ids']:
+            verifications[rec_id]['req_id'] = req_id
+            verifications[rec_id]['critical'] = info['critical']
+    return {'req_info': req_info, 'verifications': verifications}
+
+
+@never_cache
+@autosession
+def ldst_status(
+    request: WSGIRequest, session: Optional[Session]
+) -> DjangoResponseType:
+    """render LDST status page"""
+    return render(
+        request,
+        "ldst_status.html",
+        context=valmap(json.dumps, ldst_status_dict(session))
+    )
+
+
+# TODO, maybe: if there are performance issues with this as db size increases,
+#  selectively populate via Fetch API
 @never_cache
 @autosession
 def review(

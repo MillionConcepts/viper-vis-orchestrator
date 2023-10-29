@@ -435,12 +435,19 @@ class RequestForm(JunctionForm):
         }
 
     @property
+    def pending_vis(self):
+        return (
+            len(self.image_request.image_records) > 0
+            and any(v is None for v in self.verification_status.values())
+        )
+
+    @property
     def verification_code(self):
         if len(self.verification_status) == 0:
             return "no images"
         if all(v is None for v in self.verification_status.values()):
             return "none"
-        if any(v is None for v in self.verification_status.values()):
+        if self.pending_vis:
             return "partial"
         if all(v is True for v in self.verification_status.values()):
             return "full (passed)"
@@ -503,7 +510,7 @@ class RequestForm(JunctionForm):
         # otherwise simply populate / create blank form
         return cls(*args, ldst_hypotheses=parsed)
 
-    @property
+    @cached_property
     def eval_info(self):
         """
         dictionary of evaluation information. intended primarily to
@@ -518,22 +525,43 @@ class RequestForm(JunctionForm):
         return self._eval_info
 
     @property
+    def critical_hypotheses(self):
+        return [hyp for hyp in self.eval_info.values() if hyp['critical']]
+
+    @property
+    def is_critical(self):
+        return any(r['critical'] for r in self.eval_info.values())
+
+    @property
+    def evaluation_possible(self):
+        return len(self.verification_status) > 0
+
+    @property
+    def pending_evaluations(self):
+        if not self.evaluation_possible:
+            return {}
+        return [
+            hyp for hyp, status in self.eval_info.items()
+            if (status['critical'] is True) and (status['evaluation'] is None)
+        ]
+
+    @property
+    def pending_eval(self):
+        return len(self.pending_evaluations) > 0
+
+    @property
     def eval_code(self):
-        info = self.eval_info
         if len(self.verification_status) == 0:
             return ""
-        if not any(r['critical'] is True for r in info.values()):
+        if not self.is_critical:
             return "no critical LDST"
-        evaluated = [
-            r['critical'] is True
-            and r['evaluation'] is not None for r in info.values()
-        ]
-        if all(evaluated):
+        if self.pending_vis:
+            return "pending VIS"
+        if len(self.pending_evaluations) == 0:
             return "full"
-        if any(evaluated):
+        if len(self.pending_evaluations) < len(self.critical_hypotheses):
             return "partial"
         return "none"
-
 
     # TODO: cut this in a clean way
     def _populate_from_junc_image_request_ldst(self, junc_rows):

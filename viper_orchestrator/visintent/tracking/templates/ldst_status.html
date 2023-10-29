@@ -1,0 +1,86 @@
+{% extends "layouts/wrapper.html" %}
+{% block content %}
+<div id="content" style="display: none">
+    <div id="table-container" style="height:70vh">
+        <p id="table-summary-sorry"  class="sorry-p">
+            No LDST hypotheses have been defined.</p>
+        <table id="table-summary"
+               class="toggle-table paginated-table request-table summary-table">
+            <thead>
+                <tr>
+                    <th>LDST</th>
+                    <th>relevant</th>
+                    <th>critical</th>
+                    <th>pending vis</th>
+                    <th>pending eval</th>
+                    <th>passed</th>
+                    <th>failed</th>
+                </tr>
+            </thead>
+            {# populated in js #}
+            <tbody id="table-body-summary"></tbody>
+        </table>
+    </div>
+</div>
+<div id="hidden-info-div" style="display: none">
+    <p id='eval_by_req'>{{ eval_by_req }}</p>
+    <p id='eval_by_hyp'>{{ eval_by_hyp }}</p>
+    <p id='req_info'>{{ req_info }}</p>
+    <p id='ldst_summary_info'>{{ ldst_summary_info }}</p>
+</div>
+{% endblock %}
+{% block localscripts %}
+<script>
+    // shared data objects sent from backend
+
+    /**
+     * summary review status codes for each ImageRequest
+     * @type {Object<string, reqInfoRecord>}
+     */
+    const reqInfo = JSON.parse(gid('req_info').innerText)
+    /**
+     * complete evaluation status for each ImageRequest
+     * @type {Object<string, Object<string, evaluationRecord>>}
+     */
+    const evalByReq = JSON.parse(gid('eval_by_req').innerText)
+    /**
+     * complete evaluation status for each LDST hyp
+     * @type {Object<string, Object<string, evaluationRecord>>}
+     */
+    const evalByHyp = JSON.parse(gid('eval_by_hyp').innerText)
+    /**
+     * summary evaluation status for each LDST hyp
+     * @type {Object<string, ldstEvalSummary>}
+     */
+    const ldstSummary = JSON.parse(gid('ldst_summary_info').innerText)
+
+
+const buildSummaryTable = function(_event) {
+    const sTable = gid('table-body-summary')
+    let rowNum = 0
+    const bodyFragment = new DocumentFragment
+    Object.entries(ldstSummary).forEach(
+        function(
+            [hyp, {relevant, critical, pending_vis, pending_eval, passed, failed}]
+        ) {
+            const cells = [
+                hyp, relevant, critical, pending_vis, pending_eval, passed, failed
+            ].map(e => W(String(e), "td"))
+            const tr = W(cells, "tr", 'summary-row')
+            tr.id = `summary-row-${rowNum}`
+            rowNum++
+            bodyFragment.append(tr)
+        })
+    sTable.appendChild(bodyFragment)
+}
+
+const unHideContent = function() {
+    gid("content").style.display = "block"
+}
+
+const defaultTable = "summary"
+document.addEventListener("DOMContentLoaded", buildSummaryTable)
+document.addEventListener("DOMContentLoaded", revealDefault)
+document.addEventListener("DOMContentLoaded", unHideContent)
+</script>
+{% endblock %}

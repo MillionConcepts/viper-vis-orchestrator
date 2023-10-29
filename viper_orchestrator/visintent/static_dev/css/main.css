@@ -237,7 +237,7 @@ aside {
 .eval-table {
     border-collapse: separate;
     border-spacing: 0 1rem;
-    width: 75vw;
+    width: 85vw;
 }
 .eval-table th {
     font-size: 15pt;
@@ -246,10 +246,12 @@ aside {
     border-bottom: 1px solid var(--static-gray);
     padding-bottom: 0.5rem;
     text-align: center;
+    margin-right: 5rem;
+    width: fit-content;
 }
 .eval-table textarea {
     min-height: 6rem;
-    min-width: 15rem;
+    width: 15vw;
     background-color: var(--astronomical-twilight);
     color: var(--silver);
     border: none;
@@ -265,7 +267,7 @@ aside {
 }
 .eval-table .evaluation_notes-text {
     width: 100%;
-    min-width: 25vw;
+    min-width: 20vw;
 }
 .eval-table button {
     font-family: "Fira Mono", monospace;
@@ -273,13 +275,13 @@ aside {
     color: var(--phosphor-green);
     border: 1px solid var(--ambiguous-flare);
     font-size: 2.5vw;
-    height: 4rem;
+    height: 4vw;
 }
 .eval-input-row {
     border-bottom: 1px solid var(--silver);
 }
 .eval-input-row p {
-    font-size: 22pt;
+    font-size: 20pt;
 }
 .eval-input-row .good-bad-field {
     display: flex;
@@ -364,6 +366,15 @@ aside {
     border: 2px solid var(--phosphor-green);
     color: var(--ambiguous-flare)
 }
+.summary-table {
+    border-collapse: separate;
+    border-spacing: 0 0.5rem;
+}
+
+.summary-table td, .summary-table th {
+    border-bottom: 1px solid var(--static-gray);
+    padding-bottom: 0.5rem;
+}
 .request-table, .sorry-p {
     border-top: 1px solid var(--silver);
     padding-top: 1rem;
@@ -403,9 +414,9 @@ aside {
 }
 .two-column-checkbox {
     margin-top: 1rem;
-    max-height: 60vh;
+    max-height: 70vh;
     min-height: 30rem;
-    overflow: scroll;
+    overflow-y: scroll;
     background-color: var(--astronomical-twilight);
     font-family: "Fira Mono", monospace;
     font-size: 16pt;
@@ -415,6 +426,17 @@ aside {
     flex-shrink: 0;
     margin-left: 5%;
 }
+
+.two-column-checkbox::-webkit-scrollbar {
+    width: 8px;
+}
+.two-column-checkbox::-webkit-scrollbar-track {
+    background: var(--midnight-black);
+}
+.two-column-checkbox::-webkit-scrollbar-thumb {
+    background-color: rgba(100, 0, 200, 0.5);
+}
+
 .two-column-checkbox div {
     margin-bottom: 0.5rem;
 }

@@ -75,12 +75,12 @@ const styleTable = function(table, visible) {
             maybeStyle(sorry, 'none')
             toggleVisibility(present, true)
         }
-        maybeStyle(anchor, '#5fc5c6', 'color')
+        maybeStyle(anchor, '#dee1e3', 'color')
     }
     else {
         toggleVisibility(present, false)
         maybeStyle(sorry, 'none')
-        maybeStyle(anchor, '#dee1e3', 'color')
+        maybeStyle(anchor, '#5fc5c6', 'color')
     }
 };
 
