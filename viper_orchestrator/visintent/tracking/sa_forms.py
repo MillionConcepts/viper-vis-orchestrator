@@ -76,12 +76,12 @@ class SAForm(forms.Form):
         data |= {attr: getattr(self, attr) for attr in self.extra_attrs}
         valid = set(dir(self.table_class))
         try:
-            row = get_one(self.table_class, self.get_pk(), session=session)
+            assert (key := self.get_pk()) is not None
+            row = get_one(self.table_class, key, session=session)
             for k, v in keyfilter(lambda attr: attr in valid, data).items():
                 setattr(row, k, v)
             self._row = row
-        except NoResultFound:
-            # data[self.pk_spec] = ref  # TODO: frivolous?
+        except (NoResultFound, AssertionError):
             if constructor_method is None:
                 constructor = self.table_class
             else:

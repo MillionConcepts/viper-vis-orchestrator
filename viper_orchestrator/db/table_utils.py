@@ -1,8 +1,10 @@
 """abstractions for ORM object queries and introspection."""
 from __future__ import annotations
+
+from operator import gt, lt
 from typing import Collection, Union, Any, Optional, TYPE_CHECKING
 
-from sqlalchemy import select, inspect
+from sqlalchemy import select, inspect, sql
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import Session, DeclarativeBase
 from sqlalchemy.orm.decl_api import DeclarativeAttributeIntercept
@@ -165,3 +167,26 @@ def delete_image_request(request=None, req_id=None, session=None):
     if request is None:
         request = get_one(ImageRequest, req_id)
     delete_cascade(request, ("ldst_associations",), session=session)
+
+
+@autosession
+def iterquery(selector, column, descending=True, window=50, session=None):
+    last_key = None
+    ordering = f"{column.name} desc" if descending is True else column
+    comparator = lt if descending is True else gt
+    statement = selector.add_columns(column).order_by(sql.text(ordering))
+    while True:
+        query = statement
+        if last_key is not None:
+            query = query.filter(comparator(column, last_key))
+        result = session.execute(query.limit(window))
+        frozen = result.freeze()
+        chunk = frozen().all()
+        if not chunk:
+            break
+        result_width = len(chunk[0])
+        last_key = chunk[-1][-1]
+        yield frozen().columns(
+            *list(range(0, result_width - 1))
+        ).scalars().all()
+

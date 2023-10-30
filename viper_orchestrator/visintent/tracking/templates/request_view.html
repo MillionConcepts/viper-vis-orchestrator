@@ -3,15 +3,14 @@
 <body>
 {% include "layouts/nav.html" %}
 <div id="form-content">
-    {% if form.capture_id == ""%}
-        <h3>viewing intent information for capture id(s) {{ form.capture_id }}  <a href="/imagerequest?request_id={{ form.req_id }}">edit</a></h3>
-        {% if form.product_ids|length > 0 %}
+    {% if form.product_ids|length > 0 %}
+        <h3>viewing intent information for request ID {{ form.req_id }}
+            <a href="/imagerequest?req_id={{ form.req_id }}" style="margin-left: 1rem;">
+                [edit]</a></h3>
             <h4>associated product ids:</h4>
-            {% for product_id in form.product_ids %}{{ product_id }}{% endfor %}
-        {% endif %}
-        <label for="hidden-capture-id-input">
-            <input type="text" style="display: none;" id="hidden-capture-id-input" name="capture_id" value={{ form.capture_id }}>
-        </label>
+            {% for product_id in form.product_ids %}
+                <a href="{{ product_id }}" style="font-size:14pt; margin-right:0.2rem">{{ product_id }}</a>
+            {% endfor %}
     {% else %}
         <h3>viewing image request {{ form.req_id }}
             <a href="/imagerequest?req_id={{ form.req_id }}">[edit]</a>
@@ -21,7 +20,7 @@
         </label>
     {% endif %}
     <p class="metadata-view-title">{{ form.status.label }}</p>
-    <p class="metadata-view-value">{{ form.status.value.name }}</p>
+    <p class="metadata-view-value">{{ form.status.value }}</p>
     {% for field in form %}
         {% if field.name in form.slice_fields and not showslice %}
         {% elif field.name in form.pano_only_fields and not showpano %}

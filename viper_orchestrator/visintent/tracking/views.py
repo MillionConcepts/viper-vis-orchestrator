@@ -10,8 +10,8 @@ from django.http import HttpResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
 from dustgoggles.structures import NestingDict
-from sqlalchemy import select
-from sqlalchemy.exc import NoResultFound
+from sqlalchemy import select, sql
+from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from sqlalchemy.orm import Session
 
 # noinspection PyUnresolvedReferences
@@ -20,7 +20,7 @@ from viper_orchestrator.db import OSession
 from viper_orchestrator.db.session import autosession
 from viper_orchestrator.db.table_utils import (
     image_request_capturesets,
-    get_one, )
+    get_one, iterquery, )
 from viper_orchestrator.exceptions import (
     AlreadyDeletedError,
     AlreadyLosslessError,
@@ -231,7 +231,6 @@ def submitrequest(request: WSGIRequest) -> DjangoResponseType:
 def requestlist(request, session=None):
     """prep and render list of all existing requests"""
     rows = session.scalars(select(ImageRequest)).all()
-    # noinspection PyUnresolvedReferences
     rows.sort(key=lambda r: r.request_time, reverse=True)
     records = []
     for row in rows:
@@ -403,13 +402,13 @@ def review(
 @never_cache
 def plrequest(request):
     """render pl request form page"""
-    product_id, pl_id = (request.GET.get(k) for k in ("product-id", "pl-id"))
-    if (product_id is None) and (pl_id is None):
+    pid, pl_id = (request.GET.get(k) for k in ("pid", "pl_id"))
+    if (pid is None) and (pl_id is None):
         return render(request, "pl_landing.html")
-    if product_id is not None:
-        product_id = product_id.strip()
+    if pid is not None:
+        pid = pid.strip()
     try:
-        form = PLSubmission(product_id=product_id, pl_id=pl_id)
+        form = PLSubmission(pid=pid, pl_id=pl_id)
     except AlreadyLosslessError:
         return HttpResponse(
             "Fortunately, this image has already been downlinked with "
@@ -420,6 +419,8 @@ def plrequest(request):
             "Unfortunately, this image no longer exists in the "
             "CCU. Cannot create request to protect it."
         )
+    except (NoResultFound, MultipleResultsFound) as nrf:
+        return HttpResponse(str(nrf))
     return render(
         request,
         "add_to_pl.html",
@@ -427,65 +428,74 @@ def plrequest(request):
     )
 
 
+def get_last_image_ids(session):
+    last_image_ids = {0: None, 1: None}
+    for recs in iterquery(
+            select(ImageRecord), ImageRecord.start_time, session=session
+    ):
+        by_ccu = groupby(lambda r: CCU_HASH[r.instrument_name], recs)
+        for ccu in (0, 1):
+            if last_image_ids[ccu] is not None:
+                continue
+            if len(by_ccu[ccu]) > 0:
+                last_image_ids[ccu] = by_ccu[ccu][0].image_id
+        if all(v is not None for v in last_image_ids.values()):
+            break
+    return last_image_ids
+
+
 @never_cache
-def pllist(request):
+@autosession
+def pllist(request, session=None):
     """
     prep and render list of all existing protected list entries, along with
     most recent downlinked image ID (memory location) for each CCU
     """
-    feed, entries = ProtectedListEntry.feed()
-    with OSession() as session:
-        images = session.scalars(select(ImageRecord)).all()
-    # noinspection PyUnresolvedReferences
-    images.sort(key=lambda r: r.start_time, reverse=True)
-    # noinspection PyUnresolvedReferences
-    entries.sort(key=lambda r: r.image_id)
-    by_ccu = groupby(lambda i: CCU_HASH[i.instrument_name], images)
-    last_image_ids = {
-        {0: "zero", 1: "one"}[ccu]: im[0].image_id + 1
-        for ccu, im in by_ccu.items()
-    }
+
+    last_image_ids = get_last_image_ids(session)
     records = []
-    for entry in entries:
-        if entry.has_lossless or entry.superseded:
-            continue
+    rows = session.scalars(select(ProtectedListEntry)).all()
+    rows.sort(key=lambda r: r.request_time, reverse=True)
+    for row in rows:
         record = {
-            "image_id": entry.image_id,
-            "request_time": entry.request_time,
-            "rationale": entry.rationale,
-            "ccu": entry.ccu,
-            "pl_url": f"/plrequest?pl-id={entry.pl_id}",
-            "pagetitle": "Protected List Display",
+            "ccu": row.ccu,
+            "image_id": row.image_id,
+            "request_time": row.request_time.isoformat()[:19] + "Z",
+            "rationale": row.rationale,
+            "pl_url": f"/plrequest?pl-id={row.pl_id}",
+            "has_lossless": row.has_lossless,
+            "superseded": row.superseded,
+            "pid": row.request_pid
         }
         records.append(record)
-    # TODO: paginate, preferably configurably
     return render(
         request,
         "pl_display.html",
-        {"records": records, "last_ids": last_image_ids, "feed": feed},
+        {
+            "pl_json": json.dumps(records),
+            "write_head": {'zero': last_image_ids[0], 'one': last_image_ids[1]},
+            "pagetitle": "Protected List Display",
+        },
     )
 
 
-def submitplrequest(request):
+@autosession
+def submitplrequest(request, session=None):
     """
     handle pl request submission and redirect to error or success notification
     as appropriate
     """
-    product_id, pl_id = (request.GET.get(k) for k in ("product_id", "pl_id"))
-    if product_id is not None:
-        product_id = product_id.strip()
-    form = PLSubmission(request.GET, product_id=product_id, pl_id=pl_id)
+    pid, pl_id = (request.GET.get(k) for k in ("pid", "pl_id"))
+    if pid is not None:
+        pid = pid.strip()
+    form = PLSubmission(request.GET, pid=pid, pl_id=pl_id)
     if form.is_valid() is False:
         return render(request, "add_to_pl.html", {"form": form})
-    with OSession() as session:
-        try:
-            _create_or_update_entry(
-                form, session, "pl_id", "from_pid", ("product_id",)
-            )
-            session.commit()
-        except ValueError as ve:
-            form.add_error(None, str(ve))
-            return render(request, "add_to_pl.html", {"form": form})
+    try:
+        form.commit(session=session, constructor_method="from_pid")
+    except (ValueError, NoResultFound) as err:
+        form.add_error(None, str(err))
+        return render(request, "add_to_pl.html", {"form": form})
     return redirect("/success")
 
 

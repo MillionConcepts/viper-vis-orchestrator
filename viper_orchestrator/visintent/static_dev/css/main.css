@@ -135,8 +135,14 @@ aside {
 .metadata-header {
     margin-top:0;
 }
-.vertical-form-inner, .vertical-form-field, .pl-table-container,
-.review-container {
+.pl-table-container {
+    display: flex;
+    flex-direction: row;
+}
+.pl-table-container table {
+    margin-right: 2rem;
+}
+.vertical-form-inner, .vertical-form-field, .review-container {
     display: flex;
     flex-direction: column;
 }

@@ -29,7 +29,6 @@
  *  pending VIS verification.
  * @property {boolean} pending_vis - any images pending VIS verification?
  * @property {boolean} acquired - have any images been accquired yet?
-
  */
 
 /**
@@ -42,6 +41,19 @@
  *      have not all been VIS verified
  * @property {number} passed - critical requests that passed evaluation
  * @property {number} failed - critical requests that failed evaluation
+ */
+
+/**
+ * @typedef protectedListRecord
+ * @property {number} ccu - which CCU is/was the image stored on
+ * @property {number} image_id - CCU storage slot
+ * @property {string} request_time - creation or edit time of request
+ * @property {string} rationale - listed rationale for request
+ * @property {string} pl_url - URL for request editing
+ * @property {boolean} has_lossless - is there an associated lossless product?
+ *      (implies request was fulfilled)
+ * @property {boolean} superseded - did the image get deleted on the rover?
+ * @property {string} pid - PID used to create PL request
  */
 
 const reqVColor = {

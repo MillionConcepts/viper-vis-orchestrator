@@ -847,36 +847,41 @@ class RequestForm(JunctionForm):
     hazcams = None
 
 
-class PLSubmission(JunctionForm):
+@autosession
+class PLSubmission(SAForm):
     """form for submitting an entry to the PL"""
 
-    def __init__(self, *args, product_id=None, pl_id=None, **kwargs):
+    def __init__(self, *args, pid=None, pl_id=None, session=None, **kwargs):
         super().__init__(*args, **kwargs)
-        entry, self.superseded = None, None
+        self._init_from_db(pid, pl_id, session)
+        if self.entry.pl_id is not None:  # i.e., if it's an existing entry
+            self.fields["rationale"].initial = self.entry.rationale
+
+    def _init_from_db(self, pid, pl_id, session):
         if pl_id not in (None, "None"):
-            with OSession() as session:
-                entry = session.scalars(
-                    select(ProtectedListEntry).where(
-                        ProtectedListEntry.pl_id == int(pl_id)
-                    )
-                ).one()
-        elif product_id not in (None, "None"):
-            entry = ProtectedListEntry.from_pid(product_id)
+            try:
+                entry = get_one(ProtectedListEntry, pl_id, session=session)
+            except NoResultFound:
+                raise NoResultFound(
+                    f"No ProtectedList entry with pk {pl_id} exists."
+                )
+        elif pid not in (None, "None"):
+            entry = ProtectedListEntry.from_pid(pid)
         else:
             raise ValueError(
-                "must have at least pl_id or product_id to create form"
+                "must have at least pl_id or pid to create form"
             )
         self.has_lossless = entry.has_lossless
         if entry.pl_id is None and self.has_lossless:
             raise AlreadyLosslessError("Image already downlinked as lossless.")
         self.superseded = entry.superseded
-        self.pl_id = entry.pl_id  # TODO: sloppy
+        self.pl_id = entry.pl_id
         if (self.pl_id is None) and (self.superseded is True):
             raise AlreadyDeletedError("Image has already been deleted.")
         self.matching_pids = entry.matching_pids
-        if entry.pl_id is not None:  # i.e., if it's an existing entry
-            self.fields["rationale"].initial = entry.rationale
-        self.product_id = entry.matching_pids[0]
+        # we only require one reference pid
+        self.pid = entry.matching_pids[0]
+        self.entry = entry
 
     rationale = forms.CharField(
         required=True,
@@ -895,6 +900,8 @@ class PLSubmission(JunctionForm):
 
     table_class = ProtectedListEntry
     request_time = None
+    pk_spec = "pl_id"
+    extra_attrs = ("pid", "request_time")
 
 
 def request_supplementary_path(id_, fn="none"):
