@@ -183,22 +183,6 @@ const extractCriticalStatus = function(evalRecs) {
     return critHyps
 }
 
-const reqVColor = {
-    "full (mixed)": "lightskyblue",
-    "full (passed)": "#00CC11",
-    "full (failed)": "#BB2222",
-    "partial": "#D79A00",
-    "none": "#D79A00",
-    "no images": "palegoldenrod"
-}
-const reqEColor = {
-    "": "black",  // no images
-    "full": "#00CC11",
-    "partial": "#D79A00",
-    "none": "#D79A00",
-    "pending VIS": "palegoldenrod"
-}
-
 const buildEvaluationTable = function(_event) {
     const eTable = gid('table-body-evaluation')
     const bodyFragment = new DocumentFragment

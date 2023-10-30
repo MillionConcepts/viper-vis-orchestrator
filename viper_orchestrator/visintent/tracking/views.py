@@ -158,7 +158,8 @@ def imagerequest(
         "filename": filename,
         "file_url": file_url,
         "pagetitle": "Image Request",
-        "verification_json": json.dumps(form.verification_status)
+        "verification_json": json.dumps(form.verification_status),
+        "req_info_json": json.dumps(request_info_record(form.image_request)[0])
     }
     if evaluation_form is not None:
         # if we have an evaluation form, assume the user marked the hypothesis
@@ -283,7 +284,7 @@ def request_info_record(req: ImageRequest):
         'title': req.title,
         'critical': form.is_critical,
         'rec_ids': [rec.id for rec in req.image_records],
-        'acquired': len(req.image_records) > 0,
+        'acquired': form.acquired,
         'pending_vis': form.pending_vis,
         'pending_eval': form.pending_eval,
         'evaluation_possible': form.evaluation_possible,
@@ -309,7 +310,6 @@ def ldst_summary_dict(hyp_eval: dict, req_info: dict):
         'failed': 0
     }
     for req_id, status in hyp_eval.items():
-
         if status['relevant'] is True:
             summary['relevant'] += 1
         critical, acquired = status['critical'], req_info[req_id]['acquired']

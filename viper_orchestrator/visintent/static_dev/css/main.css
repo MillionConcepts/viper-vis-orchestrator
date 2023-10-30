@@ -234,6 +234,17 @@ aside {
     flex-direction: row;
     margin-top: 1rem;
 }
+.request-table .ldst-header-row td {
+    font-size: 22pt;
+    border-top: 1px solid var(--static-gray);
+    padding-bottom: 0.5rem;
+    padding-top: 1.5rem;
+}
+.hyp-request-row p, .hyp-request-row a {
+    margin: 0;
+    padding: 0;
+    font-size: 16pt;
+}
 .eval-table {
     border-collapse: separate;
     border-spacing: 0 1rem;

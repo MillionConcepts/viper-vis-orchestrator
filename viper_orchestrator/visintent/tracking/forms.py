@@ -435,9 +435,13 @@ class RequestForm(JunctionForm):
         }
 
     @property
+    def acquired(self):
+        return len(self.image_request.image_records) > 0
+
+    @property
     def pending_vis(self):
         return (
-            len(self.image_request.image_records) > 0
+            self.acquired
             and any(v is None for v in self.verification_status.values())
         )
 
@@ -526,15 +530,19 @@ class RequestForm(JunctionForm):
 
     @property
     def critical_hypotheses(self):
-        return [hyp for hyp in self.eval_info.values() if hyp['critical']]
+        return [k for k, v in self.eval_info.items() if v['critical'] is True]
 
     @property
     def is_critical(self):
-        return any(r['critical'] for r in self.eval_info.values())
+        return len(self.critical_hypotheses) > 0
 
     @property
     def evaluation_possible(self):
-        return len(self.verification_status) > 0
+        if not self.acquired:
+            return False
+        if self.pending_vis:
+            return False
+        return True
 
     @property
     def pending_evaluations(self):
@@ -559,9 +567,9 @@ class RequestForm(JunctionForm):
             return "pending VIS"
         if len(self.pending_evaluations) == 0:
             return "full"
-        if len(self.pending_evaluations) < len(self.critical_hypotheses):
-            return "partial"
-        return "none"
+        if len(self.pending_evaluations) == len(self.critical_hypotheses):
+            return "none"
+        return "partial"
 
     # TODO: cut this in a clean way
     def _populate_from_junc_image_request_ldst(self, junc_rows):

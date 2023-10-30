@@ -1,7 +1,7 @@
 {% extends "layouts/wrapper.html" %}
 {% load static %}
 {% block content %}
-<div id="content-div">
+<div id="content-div" style="display: none">
     {% if form.req_id is not None %}
         <h2>editing image request {{ form.req_id }}</h2>
         {% if form.product_ids|length > 0 %}
@@ -31,9 +31,7 @@
         </div>
         <button id="evaluation-toggle" onClick="toggleEvalTable()"></button>
         <table id="eval-table" class="eval-table"
-           {% if eval_ui_status %}
-           style="display: inherit"
-           {% else %}
+           {% if not eval_ui_status %}
            style="display: none"
            {% endif %}>
             <thead>
@@ -99,6 +97,7 @@
 </div>
 <div id="hidden-info" style="display: none">
     <p id="verification_json">{{ verification_json }}</p>
+    <p id="req_info_json">{{ req_info_json }}</p>
     <p id="eval_error_json">{{ eval_ui_status.errors }}</p>
     <p id="eval_json" style="display:none">{{ eval_json }}</p>
 </div>
@@ -110,4 +109,10 @@
     const evalUIHyp = "{{ eval_ui_status.hyp }}"
 </script>
 <script src="{% static 'js/local/imagerequest.js' %}"></script>
+<script>
+    const revealContent = function(_event) {
+        gid("content-div").style.display = "block"
+    }
+    document.addEventListener("DOMContentLoaded", revealContent)
+</script>
 {% endblock %}

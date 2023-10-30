@@ -21,7 +21,14 @@ const evalTableBody = gid('eval-table-body');
 const evalForms = document.getElementsByClassName('eval-form')
 
 // passthrough data
+/**
+ * @type {Object<str, ?boolean>}
+ */
 const verifications = JSON.parse(gid("verification_json").textContent)
+/**
+ * @type {reqInfoRecord}
+ */
+const reqInfo = JSON.parse(gid("req_info_json").textContent)
 
 
 /**
@@ -247,50 +254,17 @@ const populatePIDs = function(_event) {
 
 // TODO: take this all out and use the properties on the form
 const populateReviewStatus = function(_event) {
-    let [evaluatable, verText, verColor] = [true, null, null]
-    if (Object.values(verifications).every(v => v === null)) {
-        [evaluatable, verText, verColor] = [false, " none", "#D79A00"]
-    }
-    else if (Object.values(verifications).some(v => v === null)) {
-        [evaluatable, verText, verColor] = [false, " partial", "#D79A00"]
-    }
-    else if (Object.values(verifications).every(v => v === true)) {
-        [verText, verColor] = [" full (passed)", "#00CC11"]
-    }
-    else if (Object.values(verifications).every(v => v === false)) {
-        [verText, verColor] = [" full (failed)", "#BB2222"]
-    }
-    else {
-        [verText, verColor] = [" full (mixed)", "lightskyblue"]
-    }
-    verificationStatusP.innerText = verificationStatusP.innerText + verText
-    verificationStatusP.style.color = verColor
-    if (evaluatable === false) {
+
+    verificationStatusP.innerText = verificationStatusP.innerText + reqInfo['vcode']
+    verificationStatusP.style.color = reqVColor[reqInfo['vcode']]
+    if (reqInfo['evaluation_possible'] === false) {
         toggleButton.style.display = "none"
         return
     }
     const evalStatusP = W("evaluation: ", "p")
     const evalStatusDiv = W(evalStatusP, "div", "horizontal-div")
-    const evaluated = Object.values(evaluations).map(
-        v => v['critical'] !== true || v['evaluation'] !== null
-    )
-    let [evalText, evalColor] = [null, null]
-    if (Object.values(evaluations).every(v => v['critical'] !== true)) {
-        [evalText, evalColor, evaluatable] = [
-            "no critical hypotheses", "lightskyblue", false
-        ]
-    }
-    else if (evaluated.every(e => e === true)) {
-        [evalText, evalColor] = [" full", "#00CC11"]
-    }
-    else if (evaluated.some(e => e === true)) {
-        [evalText, evalColor] = [" partial", "#D79A00"]
-    }
-    else {
-        [evalText, evalColor] = [" none", "#D79A00"]
-    }
-    evalStatusP.innerText = evalStatusP.innerText + evalText
-    evalStatusP.style.color = evalColor
+    evalStatusP.innerText = evalStatusP.innerText + reqInfo['ecode']
+    evalStatusP.style.color = reqEColor[reqInfo['ecode']]
     reviewStatusDiv.appendChild(evalStatusDiv)
     evalStatusDiv.appendChild(toggleButton)
     if (evalTable.style.display === 'none') {

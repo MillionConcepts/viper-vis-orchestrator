@@ -25,8 +25,11 @@
  * @property {string} title - request title
  * @property {boolean} critical - any critical LDST?
  * @property {boolean} pending_eval - any critical LDST pending science evaluation?
+ *  this property is always false if no images have been acquired and/or any are
+ *  pending VIS verification.
  * @property {boolean} pending_vis - any images pending VIS verification?
- *   this property is always false if the request is not ready to be evaluated.
+ * @property {boolean} acquired - have any images been accquired yet?
+
  */
 
 /**
@@ -40,3 +43,19 @@
  * @property {number} passed - critical requests that passed evaluation
  * @property {number} failed - critical requests that failed evaluation
  */
+
+const reqVColor = {
+    "full (mixed)": "lightskyblue",
+    "full (passed)": "#00CC11",
+    "full (failed)": "#BB2222",
+    "partial": "#D79A00",
+    "none": "#D79A00",
+    "no images": "palegoldenrod"
+}
+const reqEColor = {
+    "": "black",  // no images
+    "full": "#00CC11",
+    "partial": "#D79A00",
+    "none": "#D79A00",
+    "pending VIS": "palegoldenrod"
+}
