@@ -2,6 +2,9 @@
 {% load static %}
 {% block content %}
 <div id="content-div" style="display: none">
+    {% if redirect_from_success is True %}
+        <h2 class="submit-success-header">--request successfully submitted--</h2>
+    {% endif %}
     {% if form.req_id is not None %}
         <h2>editing image request {{ form.req_id }}</h2>
         {% if form.product_ids|length > 0 %}
@@ -13,9 +16,6 @@
         {% endif %}
     {% else %}
         <h2>new image request</h2>
-    {% endif %}
-    {% if form.errors %}
-        {{ form.errors }}
     {% endif %}
     {% if form.product_ids|length > 0 %}
         <div id='multiple-eval-container' class="multiple-form-container" style="display: flex">
@@ -56,6 +56,9 @@
         {% for field in form %}
         {% if field.name == 'justification' or field.name == 'title' %}
             <div id="{{ field.name }}-field-div" class="{{ field.widget_type }}-field vertical-form-field">
+            {% if field.errors %}
+                {{ field.errors }}
+            {% endif %}
             <label for="{{ field.id }}">{{ field.label }}</label>
             {{ field }}
             </div>
@@ -100,6 +103,7 @@
     <p id="req_info_json">{{ req_info_json }}</p>
     <p id="eval_error_json">{{ eval_ui_status.errors }}</p>
     <p id="eval_json" style="display:none">{{ eval_json }}</p>
+    <p id="request_error_json" style="display:none">{{ request_error_json }}</p>
 </div>
 
 {% endblock %}

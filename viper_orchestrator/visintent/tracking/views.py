@@ -78,15 +78,15 @@ def imageview(
         metadata = json.load(stream)
     if record.image_request is None:
         evaluation, request_url, req_id = "no request", None, ""
+        metadata["verified"] = record.verified
+        metadata['verification_notes'] = record.verification_notes
+        metadata['id'] = record.id
     else:
         req_id = record.image_request.id
         request_url = f"imagerequest?req_id={req_id}&editing=True"
         evaluation = "not"
         # these will usually be None in the on-disk labels
         metadata["image_request_id"] = req_id
-        metadata["verified"] = record.verified
-        metadata['verification_notes'] = record.verification_notes
-        metadata['id'] = record.id
     if assign_record_form is None:
         assign_record_form = AssignRecordForm(rec_id=record.id, req_id=req_id)
     if (reqerr := assign_record_form.errors.get('req_id')) is not None:
@@ -135,43 +135,55 @@ def assign_record(request: WSGIRequest, session=None) -> DjangoResponseType:
 @never_cache
 def imagerequest(
     request: WSGIRequest,
-    evaluation_form: Optional[EvaluationForm] = None
+    request_form: Optional[RequestForm] = None,
+    evaluation_form: Optional[EvaluationForm] = None,
+    redirect_from_success: bool = False
 ) -> HttpResponse:
     """render image request form page"""
-    form = RequestForm.from_wsgirequest(request, submitted=False)
+    if request_form is None:
+        request_form = RequestForm.from_wsgirequest(request, submitted=False)
+    # form not None implies that we are kicking it back with errors
     editing = request.GET.get("editing", True)
     template = "image_request.html" if editing is True else "request_view.html"
-    bound = {f.name: f.value for f in tuple(form)}
+    bound = {f.name: f.value for f in tuple(request_form)}
     # these variables are used only for non-editing display
     showpano = bound["camera_request"]() == "navcam_panorama"
     showslice = (bound["need_360"]() is True) and showpano
-    if form.req_id is None and editing is False:
+    if request_form.req_id is None and editing is False:
         return HttpResponse(
             "cannot generate view for nonexistent image request",
             status=400
         )
-    filename, file_url = form.filepaths()
+    filename, file_url = request_form.filepaths()
     context = {
-        "form": form,
+        "form": request_form,
         "showpano": showpano,
         "showslice": showslice,
         "filename": filename,
         "file_url": file_url,
         "pagetitle": "Image Request",
-        "verification_json": json.dumps(form.verification_status),
-        "req_info_json": json.dumps(request_info_record(form.image_request)[0])
+        "verification_json": json.dumps(request_form.verification_status),
+        "request_error_json": request_form.errors.as_json(),
+        "redirect_from_success": redirect_from_success,
     }
+    if request_form.image_request is not None:
+        context["req_info_json"] = json.dumps(
+            request_info_record(request_form.image_request)[0]
+        )
+    else:
+        context["req_info_json"] = "{}"
     if evaluation_form is not None:
         # if we have an evaluation form, assume the user marked the hypothesis
         # as critical even if it hasn't been saved to the database yet (likely
         # because of evaluation form errors)
-        form.eval_info[evaluation_form.hyp]['relevant'] = True
-        form.eval_info[evaluation_form.hyp]['critical'] = True
+        request_form.eval_info[evaluation_form.hyp]['relevant'] = True
+        request_form.eval_info[evaluation_form.hyp]['critical'] = True
+        # noinspection PyTypedDict
         context['eval_ui_status'] = {
             'hyp': evaluation_form.hyp,
             'errors': evaluation_form.errors.as_json(),
         }
-    context["eval_json"] = json.dumps(form.eval_info)
+    context["eval_json"] = json.dumps(request_form.eval_info)
     try:
         return render(request, template, context)
     except BadURLError as bue:
@@ -211,19 +223,19 @@ def submitrequest(request: WSGIRequest) -> DjangoResponseType:
     """
     form = RequestForm.from_wsgirequest(request, submitted=True)
     if form.is_valid() is False:
-        return render(request, "image_request.html", {"form": form})
+        return imagerequest(request)
     try:
         form.commit()
     except (ValueError, TypeError) as err:
         form.add_error(None, str(err))
-        return render(request, "image_request.html", {"form": form})
+        return imagerequest(request_form=form)
     if (fileobj := request.FILES.get("supplementary_file")) is not None:
         filepath = request_supplementary_path(form.req_id, fileobj.name)
         shutil.rmtree(filepath.parent, ignore_errors=True)
         filepath.parent.mkdir(parents=True, exist_ok=True)
         with open(filepath, "wb") as stream:
             stream.write(fileobj.read())
-    return redirect("/success")
+    return imagerequest(request, redirect_from_success=True)
 
 
 @autosession
@@ -374,7 +386,7 @@ def review_info_dict(session):
 
 @never_cache
 @autosession
-def ldst_status(
+def ldst(
     request: WSGIRequest, session: Optional[Session]
 ) -> DjangoResponseType:
     """render LDST status page"""
@@ -497,11 +509,6 @@ def submitplrequest(request, session=None):
         form.add_error(None, str(err))
         return render(request, "add_to_pl.html", {"form": form})
     return redirect("/success")
-
-
-def requestsuccess(request):
-    """render request successful page"""
-    return render(request, "request_successful.html")
 
 
 @never_cache

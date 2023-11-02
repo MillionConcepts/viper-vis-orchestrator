@@ -373,8 +373,8 @@ class VerificationForm(JunctionForm):
             and len(self.cleaned_data["verification_notes"]) == 0
         ):
             self.errors[
-                "needs justification: "
-            ] = "To mark an image as bad, you must provide tags or notes."
+                "bad: "
+            ] = "give tags or notes to mark as bad."
         self._construct_image_tag_attrs()
         del self.cleaned_data["image_tags"]
 
@@ -817,8 +817,9 @@ class RequestForm(JunctionForm):
 
     def clean(self):
         super().clean()
-        # TODO: ValidationError if no hypotheses were specified
         self._construct_ldst_specs()
+        if len(self.junc_specs[JuncImageRequestLDST]) == 0:
+            self.add_error(None, "mark one or more hypotheses")
         self._reformat_camera_request()
         if len(self.cleaned_data.get("luminaires", [])) > 2:
             raise ValidationError("A max of two luminaires may be requested")

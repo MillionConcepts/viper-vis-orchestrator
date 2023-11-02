@@ -1,10 +1,12 @@
 // noinspection JSUnusedGlobalSymbols
 
+
+const paginators = {}
+
 /**
  * @type {protectedListRecord[]}
  */
 const records = JSON.parse(gid('pl_json').innerText)
-const paginators = {}
 
 const PLStatusStyle = {
     "fulfilled": "#00CC11",
@@ -64,7 +66,6 @@ const buildTables = function(_event) {
     gid('table-ccu-0-body').appendChild(CCUFrags[0])
     gid('table-ccu-1-body').appendChild(CCUFrags[1])
     gid('table-pl-log-body').appendChild(logFrag)
-
 }
 
 const nullableTables = document.getElementsByClassName('nullable-table')

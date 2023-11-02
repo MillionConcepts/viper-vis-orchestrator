@@ -1,12 +1,16 @@
-{% include "layouts/head.html" %}
-<body>
-<h2>home</h2>
-<p>
-    <a href="/imagelist">image list</a><br>
-    <a href="/requestlist">request/intent list</a><br>
-    <a href="/pllist">protected list</a><br>
-    <a href="/imagerequest">image request</a><br>
-    <a href="/plrequest">protected list request</a><br>
-</p>
-</body>
-</html>
+{% extends "layouts/wrapper.html" %}
+{% load static %}
+{% block content %}
+<div id="content">
+<h2>pages</h2>
+<ul style="font-size: 20pt">
+    <li><a href="/images">image list</a></li>
+    <li><a href="/requestlist">image request list</a></li>
+    <li><a href="/imagerequest">new image request</a></li>
+    <li><a href="/pllist">protected list</a></li>
+    <li><a href="/plrequest">new protected list request</a></li>
+    <li><a href="/review">review status</a></li>
+    <li><a href="/ldst">LDST status</a></li>
+</ul>
+</div>
+{% endblock %}

@@ -24,13 +24,13 @@ const evalForms = document.getElementsByClassName('eval-form')
 /**
  * @type {Object<str, ?boolean>}
  */
-const verifications = JSON.parse(gid("verification_json").textContent)
+const verifications = maybeParse("verification_json")
 /**
  * @type {reqInfoRecord}
  */
-const reqInfo = JSON.parse(gid("req_info_json").textContent)
-
-
+const reqInfo = maybeParse("req_info_json")
+const evalErrors = maybeParse("eval_error_json")
+const requestErrors = maybeParse("request_error_json")
 /**
  * @typedef evaluationRecord
  * @type {object}
@@ -45,23 +45,8 @@ const reqInfo = JSON.parse(gid("req_info_json").textContent)
  *
  * @type {Object<string, evaluationRecord>}
  */
-const evaluations = JSON.parse(gid("eval_json").textContent)
-
-/**
- *
- * @returns {any}
- */
-const thing = function() {
-    return evaluations
-}
-
-let evalUIErrors
-if (gid("eval_error_json").textContent !== "") {
-    evalUIErrors = JSON.parse(gid("eval_error_json").textContent)
-}
-else {
-    evalUIErrors = ""
-}
+const evaluations = maybeParse("eval_json")
+const evalUIErrors = maybeParse("eval_error_json")
 const reviewPossible = Object.keys(verifications).length > 0
 
 const toggleEvalTable = function() {
@@ -155,7 +140,16 @@ const evalRowFactory = function(hyp) {
     return cells
 }
 const populateHypotheses = function(_event) {
-    const field = gid("ldst-field-div")
+    const hypFragment = new DocumentFragment
+    // NOTE: weird key because of weird Django Form convention
+    const {__all__: hypErrors} = requestErrors
+    if (hypErrors !== undefined) {
+        const errDiv = hypFragment.appendChild(W("", "div", "hyp-errors"))
+        errDiv.appendChild(W("errors:", "h4"))
+        hypErrors.forEach(
+            e => errDiv.appendChild(W(e.message, "p"))
+        )
+    }
     Object.entries(evaluations).forEach(function(entry){
         const hyp = entry[0]
         const eval = entry[1]
@@ -169,8 +163,10 @@ const populateHypotheses = function(_event) {
         )
         critCheck.disabled = !relevant
         const row = W([...L(ldstCheck, hyp), ...L(critCheck, "critical?")], "div")
-        field.appendChild(row)
+        hypFragment.appendChild(row)
     })
+    gid("ldst-field-div").appendChild(hypFragment)
+
 }
 
 function insertErrorMessageAbove(row) {

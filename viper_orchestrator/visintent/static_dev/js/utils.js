@@ -21,6 +21,22 @@ const maybeGid = function(obj) {
 }
 
 /**
+ * @param {string|HTMLElement} obj
+ * @returns {Object}
+ */
+const maybeParse = function(obj) {
+    try {
+        return JSON.parse(maybeGid(obj).textContent)
+    }
+    catch (e) {
+        if (e instanceof SyntaxError) {
+            return {}
+        }
+        throw e
+    }
+}
+
+/**
  * @param {*} obj
  * @returns {Array|*[]}
  */
