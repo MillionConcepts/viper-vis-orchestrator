@@ -38,6 +38,7 @@
             <tr><th>hypothesis</th><th>supports?</th><th>notes</th><th>evaluator</th><th>submit</th></tr>
             </thead>
             <tbody id="eval-table-body">
+            {# populated in js #}
             {% for hyp in form.ldst_hypotheses %}
                 <tr id="{{ hyp }}-eval-row" class="eval-input-row"></tr>
             {% endfor %}

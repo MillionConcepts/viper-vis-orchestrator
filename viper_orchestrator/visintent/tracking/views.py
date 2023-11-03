@@ -7,16 +7,15 @@ from typing import Optional
 from cytoolz import groupby, valmap
 from django.core.handlers.wsgi import WSGIRequest
 from django.http import HttpResponse
-from django.shortcuts import render, redirect
+from django.shortcuts import render
 from django.views.decorators.cache import never_cache
 from dustgoggles.structures import NestingDict
-from sqlalchemy import select, sql
+from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from sqlalchemy.orm import Session
 
 # noinspection PyUnresolvedReferences
 from viper_orchestrator.config import DATA_ROOT, PRODUCT_ROOT
-from viper_orchestrator.db import OSession
 from viper_orchestrator.db.session import autosession
 from viper_orchestrator.db.table_utils import (
     image_request_capturesets,
@@ -31,8 +30,7 @@ from viper_orchestrator.visintent.tracking.forms import (
     AssignRecordForm,
     PLSubmission,
     RequestForm,
-    VerificationForm, EvaluationForm, LDST_IDS,
-)
+    VerificationForm, EvaluationForm, )
 from viper_orchestrator.visintent.tracking.forms import (
     request_supplementary_path,
 )

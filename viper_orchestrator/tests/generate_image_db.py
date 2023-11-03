@@ -15,6 +15,7 @@ from viper_orchestrator.config import (
     PARAMETERS, TEST, MEDIA_ROOT, DB_ROOT, LOG_ROOT, DATA_ROOT, BROWSE_ROOT
 )
 from viper_orchestrator.db import OSession
+from viper_orchestrator.db.runtime import SHUTDOWN
 from viper_orchestrator.db.table_utils import delete_cascade
 from viper_orchestrator.tests.utilities import make_mock_server
 from viper_orchestrator.yamcsutils.mock import MockContext, MockServer
@@ -34,7 +35,7 @@ for folder in (DATA_ROOT, BROWSE_ROOT, LOG_ROOT):
 with OSession() as session:
     print("dumping ImageRecords")
     for rec in session.scalars(select(ImageRecord)).all():
-        delete_cascade(rec, ["image_tags"], session=session)
+        delete_cascade(rec, ["image_tags"], session=session, commit=False)
     print("dumping LightRecords")
     for rec in session.scalars(select(LightRecord)).all():
         session.delete(rec)
@@ -102,12 +103,12 @@ try:
     n_completed = len(station.inbox.completed)
     n_recs_made = 0
     # send some mock light states
-    # print("spooling mock light state publications...", end="\n")
-    # SERVER.parameters = [p for p in PARAMETERS if "Light" in p]
-    # n_states, n_recs = serve_light_states(SERVER)
-    # print(
-    #     f"spooled {n_states} light states (representing {n_recs} LightRecords)"
-    # )
+    print("spooling mock light state publications...", end="\n")
+    SERVER.parameters = [p for p in PARAMETERS if "Light" in p]
+    n_states, n_recs = serve_light_states(SERVER)
+    print(
+        f"spooled {n_states} light states (representing {n_recs} LightRecords)"
+    )
 
     def n_incomplete():
         return len(
@@ -144,3 +145,4 @@ finally:
     station.shutdown()
     print("application shut down successfully")
     SERVER.ctx.kill()
+    SHUTDOWN.maybe_shut_down_postgres()

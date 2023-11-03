@@ -7,28 +7,34 @@ intended for use as a database connection.
 import atexit
 import csv
 import re
+import weakref
 from pathlib import Path
 
 from sqlalchemy import create_engine, select, insert
 from sqlalchemy.orm import Session
 
-from hostess.subutils import Viewer
+from hostess.subutils import Viewer, run
 from hostess.utilities import timeout_factory
 from viper_orchestrator.config import BASES, DB_ROOT
 from vipersci.vis.db.image_tags import ImageTag, taglist
 from vipersci.vis.db.ldst import LDST
 
-MANAGED_PROCESSES = []
-
-
-def shut_down_postgres():
-    shutdown = Viewer.from_command("pg_ctl", "stop", D=DB_ROOT)
-    shutdown.wait()
-
 
 class PostgresServerError(OSError):
     pass
 
+
+class SelectivePostgresShutdown:
+
+    def maybe_shut_down_postgres(self):
+        if self.active is True:
+            run(f"pg_ctl stop -D {DB_ROOT}")
+
+    active = False
+
+
+SHUTDOWN = SelectivePostgresShutdown()
+MANAGED_PROCESSES = []
 
 # coordinate system center
 LAT_0, LON_0 = -85.42088, 31.6218
@@ -68,9 +74,9 @@ def run_postgres_command(command, initializing=False) -> Viewer:
             if command.startswith("postgres -D"):
                 if "system is ready to accept" in process.err[-1]:
                     MANAGED_PROCESSES.append(process)
-                    # if we're launching it here, this is the process owner;
-                    # shut down postgres on exit
-                    atexit.register(shut_down_postgres)
+                    # if we're launching it here, provide option to shut down
+                    # postgres on exit
+                    SHUTDOWN.active = True
                     return process
                 if re.match(
                     r'.*FATAL:.*lock file "postmaster', process.err[0]
@@ -123,8 +129,8 @@ if not Path(DB_ROOT / "postgresql.conf").exists():
             text = re.sub("\ntimezone.*?\n", "\ntimezone = 'UTC'\n", text)
             with (DB_ROOT / "postgresql.conf").open("w") as stream:
                 stream.write(text)
-        # if we start the server ourselves, kill it on exit
-        atexit.register(shut_down_postgres)
+        # if we start the server ourselves, provide option to terminate it
+        SHUTDOWN.active = True
 # if the database exists, just try to connect to it
 else:
     # TODO: check and make sure time is set to UTC
@@ -132,6 +138,7 @@ else:
     pginit = run_postgres_command(f"postgres -D {DB_ROOT}")
 # shared sqlalchemy Engine for application
 ENGINE = create_engine(f"postgresql:///postgres")
+
 
 # initialize tables in case they don't exist (operation is harmless if they do)
 for base in BASES:

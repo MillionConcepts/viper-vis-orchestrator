@@ -24,6 +24,7 @@ from viper_orchestrator.config import (
     DATA_ROOT,
     BROWSE_ROOT
 )
+from viper_orchestrator.db.session import autosession
 from vipersci.vis.db.image_records import ImageRecord
 
 from viper_orchestrator.db import OSession
@@ -96,12 +97,12 @@ def randomize_form(form: Form, skipfields: Collection[str] = ()):
     assert form.is_valid()
 
 
-def image_records_by_compression() -> dict[
+@autosession
+def image_records_by_compression(session=None) -> dict[
     Literal["lossy", "lossless"], list[ImageRecord]
 ]:
     """return a dict distinguishing lossy from lossless ImageRecords."""
-    with OSession() as session:
-        products = session.scalars(select(ImageRecord)).all()
+    products = session.scalars(select(ImageRecord)).all()
     compdict = {"lossy": [], "lossless": []}
     for product in products:
         if product.product_id[-1] in ("z", "a"):

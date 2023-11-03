@@ -4,16 +4,13 @@ from functools import cached_property, wraps
 from types import MappingProxyType as MPt
 from typing import Optional, Union
 
-import sqlalchemy.sql.operators as sqlop
 from django import forms
 from django.core.exceptions import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import InvalidRequestError, NoResultFound
-from sqlalchemy.orm import Session
 
 # noinspection PyUnresolvedReferences
 from viper_orchestrator.config import REQUEST_FILE_ROOT
-from viper_orchestrator.db import OSession
 from viper_orchestrator.db.session import autosession
 from viper_orchestrator.db.table_utils import get_one
 from viper_orchestrator.exceptions import (

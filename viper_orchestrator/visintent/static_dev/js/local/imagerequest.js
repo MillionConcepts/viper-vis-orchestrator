@@ -32,6 +32,7 @@ const reqInfo = maybeParse("req_info_json")
 const evalErrors = maybeParse("eval_error_json")
 const requestErrors = maybeParse("request_error_json")
 /**
+ *
  * @typedef evaluationRecord
  * @type {object}
  * @property {!boolean} evaluation
@@ -142,6 +143,7 @@ const evalRowFactory = function(hyp) {
 const populateHypotheses = function(_event) {
     const hypFragment = new DocumentFragment
     // NOTE: weird key because of weird Django Form convention
+    // TODO: can make less weird on backend
     const {__all__: hypErrors} = requestErrors
     if (hypErrors !== undefined) {
         const errDiv = hypFragment.appendChild(W("", "div", "hyp-errors"))
@@ -150,11 +152,7 @@ const populateHypotheses = function(_event) {
             e => errDiv.appendChild(W(e.message, "p"))
         )
     }
-    Object.entries(evaluations).forEach(function(entry){
-        const hyp = entry[0]
-        const eval = entry[1]
-        const relevant = eval['relevant']
-        const critical = eval['critical']
+    Object.entries(evaluations).forEach(function([hyp, {relevant, critical}]){
         const ldstCheck = checkFactory(
             hyp, 'relevant', relevant===true, "critical", true, true
         )
@@ -284,4 +282,3 @@ if (reviewPossible) {
     document.addEventListener("DOMContentLoaded", populatePIDs)
     document.addEventListener("DOMContentLoaded", populateReviewStatus)
 }
-
