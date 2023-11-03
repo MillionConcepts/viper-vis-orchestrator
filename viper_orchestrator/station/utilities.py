@@ -12,6 +12,7 @@ from PIL import Image
 from cytoolz import itemfilter
 from imageio.v3 import imread
 
+from vipersci.pds.datetime import isozformat
 from vipersci.vis.db.image_records import ImageRecord
 from yamcs.tmtc.model import ParameterValue, ParameterData
 
@@ -155,3 +156,17 @@ def unpack_image_parameter_data(
     for badkey in ("generation_time", "reception_time"):
         parameter_dict.pop(badkey, None)
     return parameter_dict, image
+
+
+def utcnow():
+    return dt.datetime.utcnow().replace(tzinfo=dt.UTC)
+
+
+def stringify_timedict(timedict):
+    stringified = {}
+    for k, v in timedict.items():
+        if isinstance(v, dt.datetime):
+            stringified[k] = isozformat(v.astimezone(dt.UTC))
+        else:
+            stringified[k] = str(v)
+    return stringified

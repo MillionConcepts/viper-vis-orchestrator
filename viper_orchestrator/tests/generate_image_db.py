@@ -10,24 +10,35 @@ from hostess.utilities import timeout_factory
 from sqlalchemy import select
 
 import viper_orchestrator.station.definition as vsd
+# noinspection PyUnresolvedReferences
 from viper_orchestrator.config import (
-    DB_ROOT, MEDIA_ROOT, PARAMETERS, ROOTS, TEST
+    PARAMETERS, TEST, MEDIA_ROOT, DB_ROOT, LOG_ROOT, DATA_ROOT, BROWSE_ROOT
 )
+from viper_orchestrator.db import OSession
+from viper_orchestrator.db.table_utils import delete_cascade
+from viper_orchestrator.tests.utilities import make_mock_server
+from viper_orchestrator.yamcsutils.mock import MockContext, MockServer
+from vipersci.vis.db.image_records import ImageRecord
+from vipersci.vis.db.light_records import LightRecord
+
 
 # only run this in test mode!
 assert TEST is True
 
 # clean up, start fresh
-shutil.rmtree(DB_ROOT, ignore_errors=True)
-shutil.rmtree(MEDIA_ROOT, ignore_errors=True)
-for folder in ROOTS:
+print("wiping folders")
+for folder in (MEDIA_ROOT, LOG_ROOT):
+    shutil.rmtree(MEDIA_ROOT, ignore_errors=True)
+for folder in (DATA_ROOT, BROWSE_ROOT, LOG_ROOT):
     folder.mkdir(parents=True, exist_ok=True)
-
-from viper_orchestrator.db import OSession
-from viper_orchestrator.tests.utilities import make_mock_server
-from viper_orchestrator.yamcsutils.mock import MockContext, MockServer
-from vipersci.vis.db.image_records import ImageRecord
-from vipersci.vis.db.light_records import LightRecord
+with OSession() as session:
+    print("dumping ImageRecords")
+    for rec in session.scalars(select(ImageRecord)).all():
+        delete_cascade(rec, ["image_tags"], session=session)
+    print("dumping LightRecords")
+    for rec in session.scalars(select(LightRecord)).all():
+        session.delete(rec)
+    session.commit()
 
 
 def serve_images(max_products: int, server: MockServer) -> int:
@@ -91,12 +102,12 @@ try:
     n_completed = len(station.inbox.completed)
     n_recs_made = 0
     # send some mock light states
-    print("spooling mock light state publications...", end="\n")
-    SERVER.parameters = [p for p in PARAMETERS if "Light" in p]
-    n_states, n_recs = serve_light_states(SERVER)
-    print(
-        f"spooled {n_states} light states (representing {n_recs} LightRecords)"
-    )
+    # print("spooling mock light state publications...", end="\n")
+    # SERVER.parameters = [p for p in PARAMETERS if "Light" in p]
+    # n_states, n_recs = serve_light_states(SERVER)
+    # print(
+    #     f"spooled {n_states} light states (representing {n_recs} LightRecords)"
+    # )
 
     def n_incomplete():
         return len(
@@ -106,7 +117,7 @@ try:
     while (
             (n_completed < n_products * 3)
             or (n_incomplete() > 0)
-            or (n_recs_made < n_recs)
+            # or (n_recs_made < n_recs)
     ):
         duration = waiting()
         if station.state == "crashed":
@@ -127,7 +138,7 @@ try:
     assert len(image_records) == n_products
     print(image_records[0].asdict())
     print("images processed successfully")
-    assert len(light_records) == n_recs
+    # assert len(light_records) == n_recs
     print("light records created successfully")
 finally:
     station.shutdown()

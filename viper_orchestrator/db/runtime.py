@@ -103,7 +103,7 @@ def run_postgres_command(command, initializing=False) -> Viewer:
 
 
 # if the database doesn't exist at all, create and configure it
-if not Path(DB_ROOT).exists():
+if not Path(DB_ROOT / "postgresql.conf").exists():
     try:
         DB_ROOT.mkdir(exist_ok=True, parents=True)
     except FileNotFoundError:

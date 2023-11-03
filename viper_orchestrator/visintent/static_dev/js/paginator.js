@@ -47,14 +47,16 @@ const populatePage = function(targets) {
  * @param {?number} i
  * @param {string} parentID
  * @param {number} maximum
+ * @param {?[int, int]} slice
  */
-const revealAround = function(i, parentID, maximum) {
+const revealAround = function(i, parentID, maximum, slice=null) {
     if (i === null) {
         return
     }
     const children = Array.from(gid(parentID).children)
     let nRevealed = 0
-    for (let j = 0; j < children.length; j++) {
+    const [start, end] = slice === null ? [0, children.length] : slice
+    for (let j = start; j < end; j++) {
         if (i - j > maximum / 2 || nRevealed > maximum) {
             children[j].style.display = "none"
         }
@@ -189,7 +191,12 @@ class Paginator {
         for (let i = 0; i < this.nPages; i++) {
             showPage(this.pages[i], i === this.currentPage)
         }
-        revealAround(this.currentPage, this.linkDiv, this.maxLinks)
+        revealAround(
+            this.currentPage,
+            this.linkDiv,
+            this.maxLinks,
+            [1, gid(this.linkDiv).childElementCount - 1]
+        )
         if (this.nPages === 1) {
             return
         }
@@ -199,7 +206,7 @@ class Paginator {
         }
         else if (this.currentPage === 0) {
             gid(`${this.linkDiv}-link-left`).classList.add('inactive-paginator-link')
-            }
+        }
         }
 
     init() {

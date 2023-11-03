@@ -458,7 +458,7 @@ def get_last_image_ids(session):
 
 @never_cache
 @autosession
-def pllist(request, session=None):
+def pllist(request, redirect_from_success=False, session=None):
     """
     prep and render list of all existing protected list entries, along with
     most recent downlinked image ID (memory location) for each CCU
@@ -477,7 +477,7 @@ def pllist(request, session=None):
             "pl_url": f"/plrequest?pl-id={row.pl_id}",
             "has_lossless": row.has_lossless,
             "superseded": row.superseded,
-            "pid": row.request_pid
+            "pid": row.request_pid,
         }
         records.append(record)
     return render(
@@ -487,6 +487,7 @@ def pllist(request, session=None):
             "pl_json": json.dumps(records),
             "write_head": {'zero': last_image_ids[0], 'one': last_image_ids[1]},
             "pagetitle": "Protected List Display",
+            "redirect_from_success": redirect_from_success
         },
     )
 
@@ -508,7 +509,7 @@ def submitplrequest(request, session=None):
     except (ValueError, NoResultFound) as err:
         form.add_error(None, str(err))
         return render(request, "add_to_pl.html", {"form": form})
-    return redirect("/success")
+    return pllist(request, redirect_from_success=True)
 
 
 @never_cache

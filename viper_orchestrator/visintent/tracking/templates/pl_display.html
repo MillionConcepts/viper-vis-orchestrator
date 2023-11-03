@@ -2,6 +2,9 @@
 {% load static %}
 {% block content %}
 <div id="content" style="display: none">
+    {% if redirect_from_success is True %}
+    <h2 class="submit-success-header">----PL request successfully submitted----</h2>
+    {% endif %}
     <div id="main-ccu-split" class="pl-table-container">
         <div id="table-ccu-0-div">
             <h4>CCU 0</h4>

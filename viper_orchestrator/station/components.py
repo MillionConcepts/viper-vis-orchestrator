@@ -27,7 +27,7 @@ from viper_orchestrator.station.utilities import (
     popleft,
     push,
     validate_pdict,
-    unpack_image_parameter_data,
+    unpack_image_parameter_data, stringify_timedict,
 )
 from yamcs.client import YamcsClient
 
@@ -49,7 +49,6 @@ from hostess.station.messages import (
 from hostess.station.proto import station_pb2 as pro
 from viper_orchestrator.config import BROWSE_ROOT
 from viper_orchestrator.db import OSession
-from viper_orchestrator.timeutils import stringify_timedict
 from viper_orchestrator.yamcsutils.mock import MockYamcsClient, MockContext
 from vipersci.pds.pid import VISID
 from vipersci.vis import create_image

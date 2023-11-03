@@ -144,20 +144,31 @@ def get_one(
     return result
 
 
-def delete_cascade(obj, junc_names: Collection[str] = (), session=None):
+def delete_cascade(
+    obj, junc_names: Collection[str] = (), session=None, commit=True
+):
     for name in junc_names:
         relationship = getattr(
             obj.__mapper__.relationships, name
         )
         self_field = relationship.back_populates
         table = relationship.mapper.class_
-        selector = select(table).where(getattr(table, self_field) == obj)
+        if (
+            getattr(table, self_field).impl.__class__.__name__
+            == "CollectionAttributeImpl"
+        ):
+            selector = select(table).where(
+                getattr(table, self_field).contains(obj)
+            )
+        else:
+            # noinspection PyTypeChecker
+            selector = select(table).where(getattr(table, self_field) == obj)
         scalars = session.scalars(selector).all()
         for s in scalars:
             session.delete(s)
-    session.commit()
     session.delete(obj)
-    session.commit()
+    if commit is True:
+        session.commit()
 
 
 @autosession

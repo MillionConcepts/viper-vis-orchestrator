@@ -501,10 +501,16 @@ aside {
     font-size: 22pt;
     display: flex;
     flex-direction: row;
+    width: 35rem;
+    justify-content: space-evenly;
 }
 .paginator-links .inactive-paginator-link {
     color: var(--silver);
     pointer-events: none;
+}
+.paginator-links a {
+    margin-left: 0.5rem;
+    margin-right: 0.5rem;
 }
 #table-container {
     height: 45rem;

@@ -210,23 +210,6 @@ class ProtectedListEntry(IntentBase):
             "image_id": record.image_id,
             "start_time": record.start_time,
         }
-    #
-    # @classmethod
-    # def feed(cls, n: int = 10):
-    #     events = []
-    #     with OSession() as session:
-    #         entries = session.scalars(select(cls)).all()
-    #     for e in entries:
-    #         event = {'entry': e}
-    #         if (when := e.when_superseded) is not None:
-    #             event['what'], event['when'] = 'superseded', when
-    #         elif (when := e.when_fulfilled) is not None:
-    #             event['what'], event['when'] = 'fulfilled', when
-    #         else:
-    #             event['what'], event['when'] = 'added/edited', e.request_time
-    #         events.append(event)
-    #     events = sorted(events, key=lambda ev: ev['when'], reverse=True)
-    #     return events[:n], entries
 
     _superseded = None
     _has_lossless = None
