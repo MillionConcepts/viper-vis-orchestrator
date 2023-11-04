@@ -33,7 +33,7 @@
         </div>
         <button id="evaluation-toggle" onClick="toggleEvalTable()"></button>
         <table id="eval-table" class="eval-table"
-           {% if not eval_ui_status %}
+           {% if redirect_from_evaluation is not True %}
            style="display: none"
            {% endif %}>
             <thead>
@@ -104,7 +104,7 @@
 <div id="hidden-info" style="display: none">
     <p id="verification_json">{{ verification_json }}</p>
     <p id="req_info_json">{{ req_info_json }}</p>
-    <p id="eval_error_json">{{ eval_ui_status.errors }}</p>
+    <p id="eval_ui_status">{{ eval_ui_status }}</p>
     <p id="eval_json" style="display:none">{{ eval_json }}</p>
     <p id="request_error_json" style="display:none">{{ request_error_json }}</p>
     <p id="live_form_state" style="display: none">{{ live_form_state }}</p>
@@ -114,7 +114,6 @@
 {% block localscripts %}
 <script>
     const reqID = "{{ form.req_id }}"
-    const evalUIHyp = "{{ eval_ui_status.hyp }}"
 </script>
 <script src="{% static 'js/local/imagerequest.js' %}"></script>
 <script>

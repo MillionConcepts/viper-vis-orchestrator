@@ -178,10 +178,15 @@ def imagerequest(
         request_form.eval_info[evaluation_form.hyp]['relevant'] = True
         request_form.eval_info[evaluation_form.hyp]['critical'] = True
         # noinspection PyTypedDict
-        context['eval_ui_status'] = {
+        context['eval_ui_status'] = json.dumps({
             'hyp': evaluation_form.hyp,
             'errors': evaluation_form.errors.as_json(),
-        }
+            'success': len(evaluation_form.errors) == 0
+        })
+        context['redirect_from_evaluation'] = True
+    else:
+        context['eval_ui_status'] = "{}"
+        context['redirect_from_evaluation'] = False
     context["eval_json"] = json.dumps(request_form.eval_info)
     try:
         return render(request, template, context)

@@ -29,7 +29,20 @@ const verifications = maybeParse("verification_json")
  * @type {reqInfoRecord}
  */
 const reqInfo = maybeParse("req_info_json")
-const evalErrors = maybeParse("eval_error_json")
+/**
+ * @type {Object}
+ * @property {!string} hyp
+ * @property {!string} errors
+ * @property {!boolean} success
+ */
+const evalUIStatus = maybeParse("eval_ui_status")
+let evalUIErrors
+if (evalUIStatus.errors !== undefined) {
+    evalUIErrors = JSON.parse(evalUIStatus.errors)
+}
+else {
+    evalUIErrors = {}
+}
 const requestErrors = maybeParse("request_error_json")
 /**
  * @typedef evalState
@@ -58,7 +71,6 @@ const liveFormState = maybeParse("live_form_state")
  * @type {Object<string, evaluationRecord>}
  */
 const evaluations = maybeParse("eval_json")
-const evalUIErrors = maybeParse("eval_error_json")
 const reviewPossible = Object.keys(verifications).length > 0
 
 const toggleEvalTable = function() {
@@ -205,8 +217,11 @@ function insertErrorMessageAbove(row) {
 const populateEvalRows = function(_event) {
     Object.keys(evaluations).forEach(function(hyp) {
         const row = gid(`${hyp}-eval-row`)
-        if (Object.values(evalUIErrors).length > 0 && evalUIHyp === hyp) {
+        if (Object.values(evalUIErrors).length > 0 && evalUIStatus.hyp === hyp) {
             insertErrorMessageAbove(row);
+        }
+        else if (evalUIStatus.hyp === hyp && evalUIStatus.success === true) {
+            row.classList.add("eval-success-row")
         }
         evalRowFactory(hyp).forEach(cell => row.appendChild(cell))
         row.style.display = evaluations[hyp].critical === true ? 'table-row' : 'none'
@@ -313,6 +328,7 @@ const insertEvalFormState = function(id) {
     const stateInput = document.createElement('input')
     stateInput.name = "live_form_state"
     stateInput.value = JSON.stringify(state)
+    stateInput.type = "hidden"
     form.appendChild(stateInput)
 }
 
@@ -333,7 +349,6 @@ const updateFromLiveFormState = function(_event) {
     }
     liveFormState.evals.forEach(function({id, value}) {
         const element = gid(id)
-        console.log(id, element)
         if (
             element instanceof HTMLInputElement
             && element.type === "checkbox"

@@ -260,6 +260,9 @@ aside {
     padding: 0;
     font-size: 16pt;
 }
+.eval-success-row p {
+    background-color: #006600;
+}
 .eval-table {
     border-collapse: separate;
     border-spacing: 0 1rem;
@@ -314,6 +317,7 @@ aside {
     flex-direction: column;
     justify-content: space-evenly;
     min-width: 6rem;
+    align-items: flex-end;
 }
 .eval-error-message-row td {
     color: var(--ambiguous-flare);

@@ -183,17 +183,27 @@ class EvaluationForm(SAForm):
     populating those forms from the DOM representation of a RequestForm.
     """
 
+    @autosession
     def __init__(
         self,
         *args,
         hyp: str,
         req_id: Optional[Union[int, str]] = None,
+        session=None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         if hyp not in LDST_IDS:
             raise ValueError(f"{hyp} is not a known LDST hypothesis.")
         self.hyp, self.req_id = hyp, int(req_id)
+        # lazy way to get these attributes into the junction table while
+        # maintaining our in-code attribute name conventions
+        self.image_request_id = self.req_id
+        self.ldst_id = self.hyp
+        req = get_one(ImageRequest, self.req_id, session=session)
+        self.needs_new_association = self.hyp not in [
+            h.id for h in req.ldst_hypotheses
+        ]
 
     def clean(self):
         good, bad = (self.cleaned_data.get(b) for b in ('good', 'bad'))
@@ -217,7 +227,16 @@ class EvaluationForm(SAForm):
             )
         super().clean()
 
-    extra_attrs = ('evaluation',)
+    extra_attrs = ('evaluation', 'image_request_id', "ldst_id")
+
+    @autosession
+    def commit(self, session=None, **kwargs):
+        # if self.needs_new_association is True:
+        #     req = get_one(ImageRequest, self.req_id, session=session)
+        #     hyp = get_one(LDST, self.hyp, session=session)
+        #     req.ldst_hypotheses.append(hyp)
+        #     session.add(req)
+        super().commit(session=session)
 
     @classmethod
     def from_wsgirequest(cls, request):
@@ -243,7 +262,7 @@ class EvaluationForm(SAForm):
         widget=forms.Textarea(
             attrs={
                 "class": "evaluator-text",
-                "placeholder": "Enter your name to verify.",
+                "placeholder": "Enter your name to evaluate.",
             }
         )
     )
@@ -252,6 +271,7 @@ class EvaluationForm(SAForm):
     junc_image_request_ldst_id = None
     table_class = JuncImageRequestLDST
     evaluation: Union[bool, str]
+    image_request = None
 
 
 class VerificationForm(JunctionForm):
