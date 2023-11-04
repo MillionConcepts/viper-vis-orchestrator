@@ -265,13 +265,17 @@ const associateCriticalChecks = function(_event) {
 }
 
 const populatePIDs = function(_event) {
+    // TODO: lazy
+    let nullSpacer = null
     Object.entries(verifications).forEach(entry => {
         const pid = entry[1] !== null ? entry[0] : entry[0] + ' (unverified)'
         const anchor = W(pid, "a", `${entry[1]}-link`)
         anchor.href = entry[0]
         pidHeader.appendChild(anchor)
+        nullSpacer = W("", "div", "spacer-line")
+        pidHeader.appendChild(nullSpacer)
     })
-    Array.from(pidHeader.children).slice(-1)[0].classList.add('rightmost-status-link')
+    pidHeader.removeChild(nullSpacer)
 }
 
 // TODO: take this all out and use the properties on the form

@@ -59,7 +59,6 @@ def imageview(
     **_regex_kwargs,
 ) -> HttpResponse:
     try:
-        record: ImageRecord
         if rec_id is not None:
             record = get_one(ImageRecord, int(rec_id), session=session)
         else:
@@ -74,11 +73,11 @@ def imageview(
     label_path_stub = record.file_path.replace(".tif", ".json")
     with (DATA_ROOT / label_path_stub).open() as stream:
         metadata = json.load(stream)
+    metadata["verified"] = record.verified
+    metadata['verification_notes'] = record.verification_notes
+    metadata['id'] = record.id
     if record.image_request is None:
         evaluation, request_url, req_id = "no request", None, ""
-        metadata["verified"] = record.verified
-        metadata['verification_notes'] = record.verification_notes
-        metadata['id'] = record.id
     else:
         req_id = record.image_request.id
         request_url = f"imagerequest?req_id={req_id}&editing=True"
@@ -239,12 +238,12 @@ def submitrequest(request: WSGIRequest) -> DjangoResponseType:
         filepath.parent.mkdir(parents=True, exist_ok=True)
         with open(filepath, "wb") as stream:
             stream.write(fileobj.read())
-    return imagerequest(request, redirect_from_success=True)
+    return requestlist(request, redirect_from_success=True)
 
 
 @autosession
 @never_cache
-def requestlist(request, session=None):
+def requestlist(request, session=None, redirect_from_success=False):
     """prep and render list of all existing requests"""
     rows = session.scalars(select(ImageRequest)).all()
     rows.sort(key=lambda r: r.request_time, reverse=True)
@@ -263,14 +262,18 @@ def requestlist(request, session=None):
             "status": row.status.name,
             "n_images": len(row.image_records),
             "verification": form.verification_code,
-            "evaluation": form.eval_code
+            "evaluation": form.eval_code,
         }
         records.append(record)
     # TODO: paginate, preferably configurably
     return render(
         request,
         "request_list.html",
-        {"records": records, "statuses": [s.name for s in Status]},
+        {
+            "records": records,
+            "statuses": [s.name for s in Status],
+            'redirect_from_success': redirect_from_success
+        },
     )
 
 
@@ -330,6 +333,8 @@ def ldst_summary_dict(hyp_eval: dict, req_info: dict):
         critical, acquired = status['critical'], req_info[req_id]['acquired']
         if critical is True:
             summary['critical'] += 1
+        if not status['relevant']:
+            continue
         if acquired is True:
             summary['acquired'] += 1
         if not (acquired and critical):
@@ -478,7 +483,7 @@ def pllist(request, redirect_from_success=False, session=None):
             "image_id": row.image_id,
             "request_time": row.request_time.isoformat()[:19] + "Z",
             "rationale": row.rationale,
-            "pl_url": f"/plrequest?pl-id={row.pl_id}",
+            "pl_url": f"/plrequest?pl_id={row.pl_id}",
             "has_lossless": row.has_lossless,
             "superseded": row.superseded,
             "pid": row.request_pid,

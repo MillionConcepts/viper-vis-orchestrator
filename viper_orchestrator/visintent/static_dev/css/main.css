@@ -222,17 +222,12 @@ aside {
 .colorized-status-header {
     font-size: 16pt;
     margin-bottom: 2rem;
+    display: flex;
+    flex-direction: row;
 }
 .colorized-status-header p, .colorized-status-header a {
     font-size: 15pt;
     margin-bottom: 0.25rem;
-}
-.colorized-status-header a {
-    border-right: 1px solid var(--silver);
-    padding-right: 1rem;
-}
-.colorized-status-header .rightmost-status-link {
-    border-right: none;
 }
 .colorized-status-header .null-link {
     color: var(--ambiguous-flare)
@@ -242,6 +237,11 @@ aside {
 }
 .colorized-status-header .true-link {
     color: var(--phosphor-green)
+}
+.colorized-status-header .spacer-line {
+    margin-left: 0.6rem;
+    margin-right: 0.6rem;
+    height: 1.5rem;
 }
 .review-status-div {
     margin-top: 2rem;

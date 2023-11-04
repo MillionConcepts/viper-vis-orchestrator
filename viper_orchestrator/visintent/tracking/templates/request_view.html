@@ -7,7 +7,7 @@
         <h3>viewing intent information for request ID {{ form.req_id }}
             <a href="/imagerequest?req_id={{ form.req_id }}" style="margin-left: 1rem;">
                 [edit]</a></h3>
-            <h4>associated product ids:</h4>
+            <h4>associated products:</h4>
             {% for product_id in form.product_ids %}
                 <a href="{{ product_id }}" style="font-size:14pt; margin-right:0.2rem">{{ product_id }}</a>
             {% endfor %}

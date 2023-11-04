@@ -26,10 +26,10 @@ const buildSummaryTable = function(_event) {
     const bodyFragment = new DocumentFragment
     Object.entries(ldstSummary).forEach(
         function(
-            [hyp, {relevant, critical, pending_vis, pending_eval, passed, failed}]
+            [hyp, {relevant, critical, acquired, pending_vis, pending_eval, passed, failed}]
         ) {
             const cells = [
-                hyp, relevant, critical, pending_vis, pending_eval, passed, failed
+                hyp, relevant, critical, acquired, pending_vis, pending_eval, passed, failed
             ].map(e => W(String(e), "td"))
             const tr = W(cells, "tr", 'summary-row')
             tr.id = `summary-row-${rowNum}`

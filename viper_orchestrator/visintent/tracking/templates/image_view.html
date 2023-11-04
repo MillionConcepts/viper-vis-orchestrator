@@ -30,7 +30,10 @@
         <h3 style="font-family:'Fira Mono',monospace; font-size:28px">VIS verification</h3>
         <div id='verification-form-container' class="vertical-form-inner verification-form-inner">
         {% if verification_form.errors %}
-            {{ verification_form.errors }}
+            {{ verification_form.non_field_errors }}
+            {% for field in verification_form.fields %}
+            {{field.errors}}
+            {% endfor %}
         {% endif %}
         <div id="good-bad-field-div" class="good-bad-field" style="margin-bottom:1.5rem">
             <div>

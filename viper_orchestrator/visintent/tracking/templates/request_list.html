@@ -3,6 +3,9 @@
 <div>
     <div style="display:flex; margin-top: 2rem; margin-bottom: 1rem;">
         <div>
+            {% if redirect_from_success is True %}
+                <h2 style="margin-bottom: 1rem;" class="submit-success-header">--request successfully submitted--</h2>
+            {% endif %}
             <div id="status-picker" class="horizontal-anchor-container">
                 {% for s in statuses %}
                     <a

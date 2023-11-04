@@ -381,6 +381,8 @@ class VerificationForm(JunctionForm):
         super().clean()
         if "bad" not in self.cleaned_data and "good" not in self.cleaned_data:
             raise ValidationError("must select good or bad")
+        elif (self.cleaned_data["bad"] or self.cleaned_data["good"]) is False:
+            raise ValidationError("must select good or bad")
         if self.cleaned_data["bad"] == self.cleaned_data["good"]:
             raise ValidationError("cannot be both bad and good")
         self.verified = self.cleaned_data["good"]
@@ -389,9 +391,7 @@ class VerificationForm(JunctionForm):
             and len(self.cleaned_data["image_tags"]) == 0
             and len(self.cleaned_data["verification_notes"]) == 0
         ):
-            self.errors[
-                "bad: "
-            ] = "give tags or notes to mark as bad."
+            raise ValidationError("give tags or notes to mark bad")
         self._construct_image_tag_attrs()
         del self.cleaned_data["image_tags"]
 
