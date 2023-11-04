@@ -9,7 +9,6 @@ from django.core.handlers.wsgi import WSGIRequest
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
-from dustgoggles.structures import NestingDict
 from sqlalchemy import select
 from sqlalchemy.exc import NoResultFound, MultipleResultsFound
 from sqlalchemy.orm import Session
@@ -18,7 +17,6 @@ from sqlalchemy.orm import Session
 from viper_orchestrator.config import DATA_ROOT, PRODUCT_ROOT
 from viper_orchestrator.db.session import autosession
 from viper_orchestrator.db.table_utils import (
-    image_request_capturesets,
     get_one, iterquery, )
 from viper_orchestrator.exceptions import (
     AlreadyDeletedError,
@@ -38,13 +36,15 @@ from viper_orchestrator.visintent.tracking.tables import (
     CCU_HASH,
     ProtectedListEntry,
 )
+from viper_orchestrator.visintent.tracking.vis_db_structures import \
+    req_info_record, ldst_status_dict, review_info_dict, rec_file_links, \
+    protected_list_record, image_rec_brief
 from viper_orchestrator.visintent.visintent.settings import (
     BROWSE_URL,
     DATA_URL,
 )
 from vipersci.vis.db.image_records import ImageRecord
 from vipersci.vis.db.image_requests import ImageRequest, Status
-from vipersci.vis.db.junc_image_req_ldst import JuncImageRequestLDST
 
 
 @never_cache
@@ -166,7 +166,7 @@ def imagerequest(
     }
     if request_form.image_request is not None:
         context["req_info_json"] = json.dumps(
-            request_info_record(request_form.image_request)[0]
+            req_info_record(request_form.image_request)[0]
         )
     else:
         context["req_info_json"] = "{}"
@@ -247,150 +247,17 @@ def requestlist(request, session=None, redirect_from_success=False):
     """prep and render list of all existing requests"""
     rows = session.scalars(select(ImageRequest)).all()
     rows.sort(key=lambda r: r.request_time, reverse=True)
-    records = []
-    for row in rows:
-        form = RequestForm(image_request=row)
-        record = {
-            "title": row.title,
-            "request_time": row.request_time.isoformat()[:19] + "Z",
-            "view_url": (
-                f"/imagerequest?req_id={row.id}&editing=false"
-            ),
-            "justification": row.justification,
-            "req_id": row.id,
-            "pagetitle": "Image Request List",
-            "status": row.status.name,
-            "n_images": len(row.image_records),
-            "verification": form.verification_code,
-            "evaluation": form.eval_code,
-        }
-        records.append(record)
+    records = [req_info_record(row)[0] for row in rows]
     # TODO: paginate, preferably configurably
     return render(
         request,
         "request_list.html",
         {
-            "records": records,
-            "statuses": [s.name for s in Status],
+            "request_json": json.dumps(records),
+            "statuses": ["all", *[s.name for s in Status]],
             'redirect_from_success': redirect_from_success
         },
     )
-
-
-def _get_hyps(hyp, session):
-    # noinspection PyTypeChecker
-    return session.scalars(
-        select(JuncImageRequestLDST).where(JuncImageRequestLDST.ldst_id == hyp)
-    ).all()
-
-
-def verification_record(rec: ImageRecord):
-    return {
-        'verified': rec.verified,
-        'pid': rec._pid,
-        'gentime': rec.yamcs_generation_time.isoformat()[:19] + "Z",
-        'req_id': None if rec.image_request is None else rec.image_request.id
-    }
-
-
-def request_info_record(req: ImageRequest):
-    form = RequestForm(image_request=req)
-    return {
-        'vcode': form.verification_code,
-        'ecode': form.eval_code,
-        'status': req.status.name,
-        'title': req.title,
-        'critical': form.is_critical,
-        'rec_ids': [rec.id for rec in req.image_records],
-        'acquired': form.acquired,
-        'pending_vis': form.pending_vis,
-        'pending_eval': form.pending_eval,
-        'evaluation_possible': form.evaluation_possible,
-        'pending_evaluations': form.pending_evaluations
-    }, form
-
-
-def request_review_dict(session):
-    return {
-        req.id: request_info_record(req)[0]
-        for req in session.scalars(select(ImageRequest)).all()
-    }
-
-
-def ldst_summary_dict(hyp_eval: dict, req_info: dict):
-    summary = {
-        'relevant': 0,
-        'critical': 0,
-        'acquired': 0,
-        'pending_vis': 0,
-        'pending_eval': 0,
-        'passed': 0,
-        'failed': 0
-    }
-    for req_id, status in hyp_eval.items():
-        if status['relevant'] is True:
-            summary['relevant'] += 1
-        critical, acquired = status['critical'], req_info[req_id]['acquired']
-        if critical is True:
-            summary['critical'] += 1
-        if not status['relevant']:
-            continue
-        if acquired is True:
-            summary['acquired'] += 1
-        if not (acquired and critical):
-            continue
-        if req_info[req_id]['pending_vis'] is True:
-            summary['pending_vis'] += 1
-        elif status['pending_eval'] is True:
-            summary['pending_eval'] += 1
-        elif status['evaluation'] is True:
-            summary['passed'] += 1
-        elif status['evaluation'] is False:
-            summary['failed'] += 1
-        else:
-            raise ValueError
-    return summary
-
-
-def ldst_status_dict(session):
-    eval_by_req, eval_by_hyp, req_info = {}, NestingDict(), NestingDict()
-    for req in session.scalars(select(ImageRequest)).all():
-        req_info[req.id], form = request_info_record(req)
-        eval_by_req[req.id] = form.eval_info
-        for hyp, e in eval_by_req[req.id].items():
-            eval_by_hyp[hyp][req.id]['relevant'] = e['relevant']
-            eval_by_hyp[hyp][req.id]['critical'] = e['critical']
-            eval_by_hyp[hyp][req.id]['evaluation'] = e['evaluation']
-            eval_by_hyp[hyp][req.id]['pending_eval'] = (
-                hyp in req_info[req.id]['pending_evaluations']
-            )
-    ldst_summary_info = {
-        hyp: ldst_summary_dict(eval_by_hyp[hyp], req_info)
-        for hyp in eval_by_hyp.keys()
-    }
-    return {
-        'eval_by_req': eval_by_req,
-        'eval_by_hyp': eval_by_hyp.todict(),
-        'req_info': req_info.todict(),
-        'ldst_summary_info': ldst_summary_info
-    }
-
-
-def verification_info_dict(session):
-    return {
-        rec.id: verification_record(rec)
-        for rec in session.scalars(select(ImageRecord)).all()
-    }
-
-
-def review_info_dict(session):
-    verifications = verification_info_dict(session)
-    req_info = request_review_dict(session)
-    for req_id, info in req_info.items():
-        for rec_id in info['rec_ids']:
-            verifications[rec_id]['req_id'] = req_id
-            verifications[rec_id]['critical'] = info['critical']
-    return {'req_info': req_info, 'verifications': verifications}
 
 
 @never_cache
@@ -473,28 +340,16 @@ def pllist(request, redirect_from_success=False, session=None):
     most recent downlinked image ID (memory location) for each CCU
     """
 
-    last_image_ids = get_last_image_ids(session)
-    records = []
+    last_ids = get_last_image_ids(session)
     rows = session.scalars(select(ProtectedListEntry)).all()
     rows.sort(key=lambda r: r.request_time, reverse=True)
-    for row in rows:
-        record = {
-            "ccu": row.ccu,
-            "image_id": row.image_id,
-            "request_time": row.request_time.isoformat()[:19] + "Z",
-            "rationale": row.rationale,
-            "pl_url": f"/plrequest?pl_id={row.pl_id}",
-            "has_lossless": row.has_lossless,
-            "superseded": row.superseded,
-            "pid": row.request_pid,
-        }
-        records.append(record)
+    records = [protected_list_record(row) for row in rows]
     return render(
         request,
         "pl_display.html",
         {
             "pl_json": json.dumps(records),
-            "write_head": {'zero': last_image_ids[0], 'one': last_image_ids[1]},
+            "write_head": {'zero': last_ids[0], 'one': last_ids[1]},
             "pagetitle": "Protected List Display",
             "redirect_from_success": redirect_from_success
         },
@@ -528,31 +383,11 @@ def imagelist(request, session=None):
     rows = session.scalars(select(ImageRecord)).all()
     # noinspection PyUnresolvedReferences
     rows.sort(key=lambda r: r.start_time, reverse=True)
-    capturesets = image_request_capturesets()
     records = defaultdict(list)
     for row in rows:
-        record = {
-            "product_id": row.product_id,
-            "capture_id": row.capture_id,
-            "instrument": row.instrument_name,
-            "image_url": DATA_URL + row.file_path,
-            "label_url": DATA_URL + row.file_path.replace("tif", "json"),
-            "thumbnail_url": BROWSE_URL
-            + row.file_path.replace(".tif", "_thumb.jpg"),
-            "image_request_name": "create",
-            "image_request_url": "/imagerequest",
-        }
-        for req_id, captures in capturesets.items():
-            if int(row.capture_id) in captures:
-                record["image_request_name"] = "edit"
-                record["image_request_url"] += f"?req_id={req_id}"
-        if record["image_request_name"] == "create":
-            # i.e., we didn't find an existing request
-            record["image_request_url"] += f"?capture_id={row.capture_id}"
+        record = image_rec_brief(row)
         records["all"].append(record)
         records[record["instrument"].split(" ")[0]].append(record)
-
-    # TODO: paginate, preferably configurably
     return render(
         request,
         "image_list.html",

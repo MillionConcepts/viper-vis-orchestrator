@@ -575,9 +575,9 @@ class RequestForm(JunctionForm):
         return len(self.pending_evaluations) > 0
 
     @property
-    def eval_code(self):
+    def ecode(self):
         if len(self.verification_status) == 0:
-            return ""
+            return "unfulfilled"
         if not self.is_critical:
             return "no critical LDST"
         if self.pending_vis:

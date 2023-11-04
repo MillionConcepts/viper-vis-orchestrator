@@ -1,40 +1,48 @@
 {% extends "layouts/wrapper.html" %}
+{% load static %}
 {% block content %}
-<div>
+<div id="content" style="display: none">
     <div style="display:flex; margin-top: 2rem; margin-bottom: 1rem;">
         <div>
             {% if redirect_from_success is True %}
                 <h2 style="margin-bottom: 1rem;" class="submit-success-header">--request successfully submitted--</h2>
             {% endif %}
-            <div id="status-picker" class="horizontal-anchor-container">
+            <div id="status-picker" class="horizontal-anchor-container" style="padding-left: 0.1rem">
                 {% for s in statuses %}
-                    <a
-                        id = "table-{{s}}-anchor"
-                        onclick="revealTable('{{ s }}')">{{ s }}
-                    </a>
+                    <a id = "table-{{s}}-anchor"
+                        onclick="revealTable('{{ s }}')">{{ s }}</a>
                 {% endfor %}
             </div>
         {% for s in statuses %}
             <p id="table-{{ s }}-sorry" style="font-size: 18pt">
                 No requests currently exist with this status.
             </p>
-            <table class='request-table toggle-table' id="table-{{ s }}">
+            <table class='request-table toggle-table requestlist-table' id="table-{{ s }}">
                 {% include "layouts/request_table_header.html" %}
-                {% for record in records %}
-                    {% if record.status == s %}
-                        {% include "layouts/request_table_row.html" %}
-                    {% endif %}
-                {% endfor %}
+            {# populated in js #}
+            <tbody id="table-{{ s }}-body"></tbody>
             </table>
         {% endfor %}
         </div>
     </div>
+<div id="hidden-info-div" style="display: none">
+    <p id="request_json">{{ request_json }}</p>
+    <p id="status_json">{{ status_json }}</p>
+</div>
 </div>
 {% endblock %}
 {% block localscripts %}
+    <script src="{% static 'js/local/requestlist.js' %}"></script>
 <script>
-    const defaultTable = "WORKING"
+    const defaultTable = "all"
+
+    const revealContent = function(_event) {
+        gid("content").style.display = "block"
+    }
+
+    document.addEventListener("DOMContentLoaded", buildRequestTable)
     document.addEventListener("DOMContentLoaded", revealDefault)
     document.addEventListener("DOMContentLoaded", addCounts)
+    document.addEventListener("DOMContentLoaded", revealContent)
 </script>
 {% endblock %}

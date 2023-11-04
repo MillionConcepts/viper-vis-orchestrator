@@ -1,4 +1,7 @@
-// type definitions for objects sent from backend as JSON
+/** type definitions for objects sent from backend as JSON. these correspond
+ * to type aliases and preprocessing functions in vis_db_structures.py.
+ */
+
 /**
  * @typedef evaluationRecord
  * @property {?boolean} relevant - relevant to this hypothesis
@@ -28,7 +31,11 @@
  *  this property is always false if no images have been acquired and/or any are
  *  pending VIS verification.
  * @property {boolean} pending_vis - any images pending VIS verification?
- * @property {boolean} acquired - have any images been accquired yet?
+ * @property {boolean} acquired - have any images been acquired yet?
+ * @property {string} edit_url - link to request edit page
+ * @property {string} request_time - ISO-formatted modification time
+ * @property {number[]} rec_ids - pks of all associated ImageRecords
+ * @property {string[]} rec_pids - VIS IDs of all associated ImageRecords
  */
 
 /**
@@ -56,16 +63,27 @@
  * @property {string} pid - PID used to create PL request
  */
 
+/**
+ * @typedef imageRecBrief
+ * @type {object}
+ * @property {number} product_id - VIS ID
+ * @property {string} instrument_name - human-readable camera name
+ * @property {string} thumbnail_url - link to on-disk thumbnail
+ * @property {string} browse_url - link to on-disk JPEG browse image
+ * @property {string} label_url - link to on-disk JSON label
+ */
+
+// TODO: should not be in this file, and should just be CSS
 const reqVColor = {
     "full (mixed)": "lightskyblue",
     "full (passed)": "#00CC11",
     "full (failed)": "#BB2222",
     "partial": "#D79A00",
     "none": "#D79A00",
-    "no images": "palegoldenrod"
+    "no images": "#666677"
 }
 const reqEColor = {
-    "": "black",  // no images
+    "unfulfilled": "#666677",  // no images
     "full": "#00CC11",
     "partial": "#D79A00",
     "none": "#D79A00",

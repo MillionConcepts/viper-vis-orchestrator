@@ -256,8 +256,6 @@ aside {
     margin-top: 1rem;
 }
 .hyp-request-row p, .hyp-request-row a {
-    margin: 0;
-    padding: 0;
     font-size: 16pt;
 }
 .eval-success-row p {
@@ -272,7 +270,6 @@ aside {
     font-size: 15pt;
 }
 .eval-table td {
-    border-bottom: 1px solid var(--static-gray);
     padding-bottom: 0.5rem;
     text-align: center;
     margin-right: 5rem;
@@ -411,14 +408,21 @@ aside {
     border-collapse: separate;
     border-spacing: 0 0.5rem;
 }
-
-.summary-table td, .summary-table th {
-    border-bottom: 1px solid var(--static-gray);
-    padding-bottom: 0.5rem;
+.request-table {
+    border-spacing: 0;
+    border-collapse: separate;
 }
 .request-table, .sorry-p {
     border-top: 1px solid var(--silver);
     padding-top: 1rem;
+}
+.request-table td, .request-table th {
+    border-bottom: 1px solid var(--static-gray);
+    padding: 0.25rem;
+}
+.request-table p {
+    padding: 0;
+    margin: 0;
 }
 .sorry-p {
     font-size: 18pt;
@@ -428,17 +432,27 @@ aside {
     padding-left: 1rem;
 }
 .request-table th {
-    font-size:20pt;
+    font-size: 20pt;
 }
 .request-table td {
     font-size: 18pt;
     text-align: center;
 }
 .request-table .ldst-spacer-row td {
-    border-top: 1px solid var(--static-gray);
+    padding-top: 0.5rem;
+    border: none;
 }
 .request-table .ldst-header-row td {
+    border: none;
     font-size: 20pt;
+}
+.requestlist-table p {
+    padding: 0;
+    margin: 0;
+}
+.requestlist-table td {
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
 }
 .request-container input, .request-container select,
 .request-container textarea {
