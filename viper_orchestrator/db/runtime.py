@@ -4,12 +4,11 @@ should be imported if and only if you wish to execute the database
 initialization and connection workflow. This module's ENGINE member is
 intended for use as a database connection.
 """
-import atexit
 import csv
-import re
-import weakref
 from pathlib import Path
+import re
 
+from invoke import UnexpectedExit
 from sqlalchemy import create_engine, select, insert
 from sqlalchemy.orm import Session
 
@@ -28,7 +27,13 @@ class SelectivePostgresShutdown:
 
     def maybe_shut_down_postgres(self):
         if self.active is True:
-            run(f"pg_ctl stop -D {DB_ROOT}")
+            try:
+                run(f"pg_ctl stop -D {DB_ROOT}")
+            except UnexpectedExit:
+                # KeyboardInterrupt will typically propagate
+                # to the postgres process via the Viewer,
+                # making this unnecessary
+                pass
 
     active = False
 
@@ -137,7 +142,7 @@ else:
     # launch postgres server if it's not running
     pginit = run_postgres_command(f"postgres -D {DB_ROOT}")
 # shared sqlalchemy Engine for application
-ENGINE = create_engine(f"postgresql:///postgres")
+ENGINE = create_engine("postgresql:///postgres")
 
 
 # initialize tables in case they don't exist (operation is harmless if they do)

@@ -35,7 +35,7 @@ for folder in (DATA_ROOT, BROWSE_ROOT, LOG_ROOT):
 with OSession() as session:
     print("dumping ImageRecords")
     for rec in session.scalars(select(ImageRecord)).all():
-        delete_cascade(rec, ["image_tags"], session=session, commit=False)
+        delete_cascade(rec, ["image_tag_associations"], session=session, commit=False)
     print("dumping LightRecords")
     for rec in session.scalars(select(LightRecord)).all():
         session.delete(rec)
@@ -74,20 +74,29 @@ def serve_light_states(server: MockServer) -> tuple[int, int]:
     return len(server._pickable), n_light_recs
 
 
-station = vsd.create_station()
-station.save_port_to_shared_memory()
-station.start()
-vsd.launch_delegates(station, mock=True, context='local')
-# give delegate configuration a moment to propagate
-time.sleep(0.6)
-# make a shared mock context (fake websocket) for the mock yamcs server,
-# image watcher, and light watcher
-ctx = MockContext()
-# create a mock YAMCS server attached to that shared context
-print("initializing mock YAMCS server")
-SERVER = make_mock_server(ctx)
+station, SERVER = None, None
+
+
+def maybe_shut_down(station_, server_):
+    if station_ is not None:
+        station.shutdown()
+    if server_ is not None:
+        server_.ctx.kill()
+
 
 try:
+    station = vsd.create_station()
+    station.save_port_to_shared_memory()
+    station.start()
+    vsd.launch_delegates(station, mock=True, context='local')
+    # give delegate configuration a moment to propagate
+    time.sleep(0.6)
+    # make a shared mock context (fake websocket) for the mock yamcs server,
+    # image watcher, and light watcher
+    ctx = MockContext()
+    # create a mock YAMCS server attached to that shared context
+    print("initializing mock YAMCS server")
+    SERVER = make_mock_server(ctx)
     # attach context to delegates
     image_watcher = station.get_delegate("image_watcher")['obj']
     light_watcher = station.get_delegate("light_watcher")['obj']
@@ -142,7 +151,6 @@ try:
     # assert len(light_records) == n_recs
     print("light records created successfully")
 finally:
-    station.shutdown()
+    maybe_shut_down(station, SERVER)
     print("application shut down successfully")
-    SERVER.ctx.kill()
     SHUTDOWN.maybe_shut_down_postgres()
