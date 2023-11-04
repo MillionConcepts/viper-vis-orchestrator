@@ -24,14 +24,15 @@ dependencies:
 # dependencies for parquet
   - pyarrow
 # thumbnails
-  - pillow
+  # `imageio` and `pillow` 10.1.0 have a compatibility issue
+  - pillow==10.0.1
 # dependencies for the visintent application
   - django
 # dependencies for components of vipersci used by the orchestrator
   - genshi
   - psycopg2
   - scikit-image
-  - sqlalchemy
+    - sqlalchemy
   - tifftools
 # dependencies for components of vipersci used by visintent
   - geoalchemy2

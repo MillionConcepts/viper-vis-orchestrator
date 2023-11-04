@@ -32,6 +32,17 @@ const reqInfo = maybeParse("req_info_json")
 const evalErrors = maybeParse("eval_error_json")
 const requestErrors = maybeParse("request_error_json")
 /**
+ * @typedef evalState
+ * @property {string} id
+ * @property {string|boolean} value
+ */
+/**
+ * @type Object
+ * @property {string[]} critical
+ * @property {evalState[]} evals
+ */
+const liveFormState = maybeParse("live_form_state")
+/**
  *
  * @typedef evaluationRecord
  * @type {object}
@@ -67,8 +78,9 @@ const textAreaFactory = function(identifier, name, text=null, placeholder=null) 
     textArea.innerText = text === null ? "" : text
     textArea.placeholder = placeholder === null ? "" : placeholder
     textArea.classList.add(`${name}-text`)
+    textArea.classList.add('eval-input-element')
     textArea.name = name
-    textArea.id = `${identifier}-notes`
+    textArea.id = `${identifier}-${name}`
     return textArea
 }
 /**
@@ -104,6 +116,7 @@ const checkFactory = function(
             checkbox.onclick = () => disableCheck(target, checkbox)
         }
     }
+    checkbox.classList.add("eval-input-element")
     return checkbox
 }
 
@@ -269,6 +282,69 @@ const populateReviewStatus = function(_event) {
     }
 }
 
+const insertEvalFormState = function(id) {
+    const form = gid(id)
+    /**
+     * @type {string[]}
+     */
+    const [insertHyps, state] = [[], {'critical': [], 'evals': []}]
+    Array.from(criticalChecks).forEach(function(checkbox)
+    {
+        if (checkbox.checked !== true) {
+            return
+        }
+        insertHyps.push(checkbox.id.slice(0, 5))
+        state['critical'].push(checkbox.id)
+    })
+    const inputs = document.getElementsByClassName('eval-input-element')
+    Array.from(inputs).forEach(function(input){
+        if (!(insertHyps.includes(input.id.slice(0,5)))) {
+            return
+        }
+        const stateObj = {'id': input.id}
+        if (input.type === "checkbox") {
+            stateObj["value"] = input.checked
+        }
+        else {
+            stateObj['value'] = input.value
+        }
+        state['evals'].push(stateObj)
+    })
+    const stateInput = document.createElement('input')
+    stateInput.name = "live_form_state"
+    stateInput.value = JSON.stringify(state)
+    form.appendChild(stateInput)
+}
+
+const updateFromLiveFormState = function(_event) {
+    if (liveFormState.critical !== undefined) {
+        liveFormState.critical.forEach(function(critCheckID){
+            gid(critCheckID.replace("critical", 'relevant')).checked = true
+            gid(
+                critCheckID.replace("critical-check", 'eval-row')
+            ).style.display = "table-row"
+            const critCheck = gid(critCheckID)
+            critCheck.checked = true
+            critCheck.disabled = false
+        })
+    }
+    if (liveFormState.evals === undefined) {
+        return
+    }
+    liveFormState.evals.forEach(function({id, value}) {
+        const element = gid(id)
+        console.log(id, element)
+        if (
+            element instanceof HTMLInputElement
+            && element.type === "checkbox"
+        ) {
+            element.checked = value
+        } else {
+            element.value = value
+        }
+    })
+}
+
 cameraRequest.addEventListener('change', togglePanoVisibility);
 needs360.addEventListener('change', toggleSliceVisibility);
 document.addEventListener("DOMContentLoaded", togglePanoVisibility)
@@ -281,4 +357,5 @@ if (reviewPossible) {
     document.addEventListener("DOMContentLoaded", associateCriticalChecks)
     document.addEventListener("DOMContentLoaded", populatePIDs)
     document.addEventListener("DOMContentLoaded", populateReviewStatus)
+    document.addEventListener("DOMContentLoaded", updateFromLiveFormState)
 }

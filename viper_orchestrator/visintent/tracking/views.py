@@ -163,6 +163,7 @@ def imagerequest(
         "verification_json": json.dumps(request_form.verification_status),
         "request_error_json": request_form.errors.as_json(),
         "redirect_from_success": redirect_from_success,
+        "live_form_state": request.POST.get("live_form_state", "{}")
     }
     if request_form.image_request is not None:
         context["req_info_json"] = json.dumps(

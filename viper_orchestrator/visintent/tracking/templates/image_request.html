@@ -19,13 +19,15 @@
     {% endif %}
     {% if form.product_ids|length > 0 %}
         <div id='multiple-eval-container' class="multiple-form-container" style="display: flex">
-        {# empty forms that provide hooks for input elements in eval-table rows #}
+        {# empty form that provides hooks for input elements in eval-table rows #}
         {% for hyp in form.ldst_hypotheses %}
             <form id="{{ hyp }}-eval-form"
                   class="eval-form"
                   method="POST"
                   enctype="multipart/form-data"
-                  action="/submitevaluation?req_id={{ form.req_id }}&hyp={{ hyp }}">
+                  action="/submitevaluation?req_id={{ form.req_id }}&hyp={{ hyp }}"
+                  onsubmit="insertEvalFormState('{{ hyp }}-eval-form')"
+            >
             </form>
         {% endfor %}
         </div>
@@ -105,6 +107,7 @@
     <p id="eval_error_json">{{ eval_ui_status.errors }}</p>
     <p id="eval_json" style="display:none">{{ eval_json }}</p>
     <p id="request_error_json" style="display:none">{{ request_error_json }}</p>
+    <p id="live_form_state" style="display: none">{{ live_form_state }}</p>
 </div>
 
 {% endblock %}
