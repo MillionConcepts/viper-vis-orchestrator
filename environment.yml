@@ -21,6 +21,8 @@ dependencies:
   - rich
   - fabric
   - invoke
+  - textual
+  - fire
 # dependencies for parquet
   - pyarrow
 # thumbnails

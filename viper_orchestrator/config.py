@@ -91,6 +91,7 @@ def set_up_paths(test: bool = TEST):
         root.mkdir(parents=True, exist_ok=True)
     for k, v in paths.items():
         setattr(module, k, v)
+    return paths
 
 
 set_up_paths()

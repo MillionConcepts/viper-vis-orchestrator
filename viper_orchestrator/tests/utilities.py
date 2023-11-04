@@ -146,7 +146,9 @@ def copy_imagerecord(
 ):
     if offset is None:
         offset = dt.timedelta(
-            hours=random.randint(1, 110), minutes=random.randint(1, 60)
+            hours=random.randint(1, 200),
+            minutes=random.randint(1, 60),
+            seconds=random.randint(1, 60)
         )
     elif isinstance(offset, int):
         offset = dt.timedelta(seconds=offset)
