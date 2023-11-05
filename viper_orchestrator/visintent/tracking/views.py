@@ -129,7 +129,7 @@ def assign_record(request: WSGIRequest, session=None) -> DjangoResponseType:
         )
     form.commit(session=session)
     return imageview(
-        request, req_id=request.GET.get("rec_id"), pid=request.POST["pid"]
+        request, req_id=request.GET.get("req_id"), pid=request.POST["pid"]
     )
 
 
