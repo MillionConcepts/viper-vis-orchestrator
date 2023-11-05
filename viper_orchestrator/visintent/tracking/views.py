@@ -128,7 +128,9 @@ def assign_record(request: WSGIRequest, session=None) -> DjangoResponseType:
             request, pid=request.POST["pid"], assign_record_form=form
         )
     form.commit(session=session)
-    return imageview(request, pid=request.POST["pid"])
+    return imageview(
+        request, req_id=request.GET.get("rec_id"), pid=request.POST["pid"]
+    )
 
 
 @never_cache
