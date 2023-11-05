@@ -486,7 +486,7 @@ class RequestForm(JunctionForm):
             )
         except (StopIteration, FileNotFoundError, AttributeError):
             return None, None
-        file_url = REQUEST_FILE_URL / f"request_{self.req_id}/{filepath.name}"
+        file_url = Path(REQUEST_FILE_URL) / f"request_{self.req_id}/{filepath.name}"
         return filepath.name, file_url
 
     @classmethod
