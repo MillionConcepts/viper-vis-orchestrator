@@ -77,11 +77,13 @@ def imageview(
     metadata['verification_notes'] = record.verification_notes
     metadata['id'] = record.id
     if record.image_request is None:
-        evaluation, request_url, req_id = "no request", None, ""
+        ecode, request_url, req_id = "no request", None, ""
     else:
         req_id = record.image_request.id
         request_url = f"imagerequest?req_id={req_id}&editing=True"
-        evaluation = "not"
+        ecode = RequestForm(
+            image_request=get_one(ImageRequest, req_id, session=session)
+        ).ecode
         # these will usually be None in the on-disk labels
         metadata["image_request_id"] = req_id
     if assign_record_form is None:
@@ -100,7 +102,7 @@ def imageview(
             "browse_url": (
                 BROWSE_URL + record.file_path.replace(".tif", "_browse.jpg")
             ),
-            "evaluation": evaluation,
+            "ecode": ecode,
             "image_url": DATA_URL + record.file_path,
             "label_url": DATA_URL + label_path_stub,
             "metadata": metadata,

@@ -90,7 +90,7 @@
             </p>
             <p id="vis-evaluation-p">
                 <a id="vis-evaluation-a" style="margin-left: 0.25rem; margin-right:0"></a>
-                {% if evaluation == "no request" %}
+                {% if ecode == "no request" %}
                     <a onclick="toggleVisibility(['assign-record-form'])"
                        style="color: palegoldenrod; margin-left: 0; margin-right: 0">
                         [assign]</a>
@@ -102,7 +102,7 @@
         <p style="font-size: 16pt; color:#BB2222">{{ reqerr }}</p>
         {% endif %}
         <div id="request-display-format" style="display:flex;flex-direction: row">
-        {% if evaluation != "no request" %}
+        {% if ecode != "no request" %}
         {% if reqerr %}
         <p id="reassign-p" style="margin-top:0; display:none">
         {% else %}
@@ -162,50 +162,44 @@
             'a-text': '[edit]'
         }
     }["{{ metadata.verified }}"]
+    // note -- the 'unfulfilled' ecode should be impossible here;
+    // by construction, there's at least one associated image (this one)
     const evaluationStyle = {
         'no request': {
-            'p-color': 'orange',
+            'p-color': 'salmon',
             'p-text': '- no linked request',
-            'a-color': 'palegoldenrod',
+            'a-color': 'lightpink',
             'a-text': '[create]',
             'a-href': '/imagerequest?capture_id={{ metadata.capture_id }}'
         },
-        'not': {
+        'none': {
             'p-color': 'orange',
             'p-text': '- not evaluated',
             'a-color': 'palegoldenrod',
             'a-text': '[evaluate]',
             'a-href': '{{ request_url }}'
         },
-        'incomplete': {
+        'partial': {
             'p-color': 'orange',
             'p-text': '- evaluation incomplete',
             'a-color': 'lightpink',
             'a-text': '[continue]',
             'a-href': '{{ request_url }}'
         },
-        'partial': {
-            'p-color': 'beige',
-            'p-text': '- partially passed evaluation',
-            'a-color': 'lightskyblue',
-            'a-text': '[view/edit]',
-            'a-href': '{{ request_url }}'
-        },
-        'passed': {
+        'full': {
             'p-color': 'lightgreen',
-            'p-text': '- passed evaluation',
+            'p-text': '- fully evaluated',
             'a-color': 'palegreen',
             'a-text': '[view/edit]',
             'a-href': '{{ request_url }}'
         },
-        'failed': {
-            'p-color': 'salmon',
-            'p-text': '- failed evaluation',
+        'pending VIS': {
+            'p-color': 'orange',
+            'p-text': '- pending VIS',
             'a-color': 'lightpink',
             'a-text': '[view/edit]',
-            'a-href': '{{ request_url }}'
         }
-    }["{{ evaluation }}"]
+    }["{{ ecode }}"]
     const goodCheck = document.getElementById('id_good')
     const badCheck = document.getElementById('id_bad')
     goodCheck.setAttribute("onclick", "unCheck(badCheck)")
