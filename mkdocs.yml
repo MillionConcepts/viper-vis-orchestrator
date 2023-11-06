@@ -1,0 +1,10 @@
+site_name: VIPER VIS Orchestrator
+theme:
+  name: readthedocs
+plugins:
+- search
+- mkdocstrings
+
+nav:
+  - License: 'LICENSE.md'
+  - API Reference: 'orchestrator_api.md'
