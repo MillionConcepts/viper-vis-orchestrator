@@ -2,4 +2,4 @@ visintent:
 
 viper_orchestrator.visintent.__init__
 
-::: viper_orchestrator.visintent.views.assign_record
+::: viper_orchestrator.visintent.views
