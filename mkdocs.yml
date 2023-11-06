@@ -1,4 +1,5 @@
 site_name: VIPER VIS Orchestrator
+site_description: documentation for viper vis orchestrator https://github.com/MillionConcepts/viper-vis-orchestrator
 theme:
   name: readthedocs
 plugins:
