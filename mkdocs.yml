@@ -6,5 +6,6 @@ plugins:
 - mkdocstrings
 
 nav:
+  - 'index.md'
   - License: 'LICENSE.md'
   - API Reference: 'orchestrator_api.md'
