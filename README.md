@@ -60,3 +60,6 @@ Note that if you wish to recreate sample events (or produce new ones from a
 new sample data file), running the `yamcs` server in a Python-managed thread is _touchy_. 
 If it crashes, or if you stop it with SIGKILL rather than SIGTERM, it can 
 leave temp files around that make its HTTP frontend not work for reasons.
+
+Additional information on usage including an API reference 
+can now be accessed in our documentation on readthedocs at: https://viper-vis-orchestrator.readthedocs.io [![Documentation Status](https://readthedocs.org/projects/viper-vis-orchestrator/badge/?version=latest)](https://viper-vis-orchestrator.readthedocs.io/en/latest/?badge=latest)
