@@ -1,10 +1,15 @@
 site_name: VIPER VIS Orchestrator
 site_description: documentation for viper vis orchestrator https://github.com/MillionConcepts/viper-vis-orchestrator
 theme:
-  name: readthedocs
+  name: material
 plugins:
 - search
-- mkdocstrings
+- mkdocstrings:
+    handlers:
+      python:
+        options:
+          filters: []
+          show_signature_annotations: true
 
 nav:
   - 'index.md'

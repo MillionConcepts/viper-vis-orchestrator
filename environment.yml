@@ -34,7 +34,7 @@ dependencies:
   - genshi
   - psycopg2
   - scikit-image
-    - sqlalchemy
+  - sqlalchemy
   - tifftools
 # dependencies for components of vipersci used by visintent
   - geoalchemy2
@@ -45,6 +45,6 @@ dependencies:
   - ipython
   - pip
 # yamcs-client wants to install a lower version that is incompatible with
-# hostess, so don't add it to the environment file!
+# hostess, so don't add it to the environment file! (pip install yamcs-client --no-dependencies)
   - pip:
       - google
